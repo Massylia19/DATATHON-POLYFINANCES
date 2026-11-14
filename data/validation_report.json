@@ -1,6 +1,6 @@
 {
   "validated_on": "2026-11-14",
-  "dataset_directory": "alphaforge_starter",
+  "dataset_directory": "data/market",
   "dataset_retrieved_on": "2026-11-13",
   "status": "passed_with_documented_caveats",
   "checks": {
