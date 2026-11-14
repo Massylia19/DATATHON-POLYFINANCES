@@ -6,8 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "alphaforge-portfolio-engine"
 version = "0.1.0"
 description = "Comparaison historique reproductible de portefeuilles fictifs"
-requires-python = ">=3.9"
-dependencies = []
+requires-python = ">=3.12"
+dependencies = [
+  "boto3>=1.35.0,<2.0.0",
+  "streamlit>=1.36",
+]
 
 [tool.setuptools]
 packages = ["alphaforge"]

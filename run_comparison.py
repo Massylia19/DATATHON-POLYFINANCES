@@ -1,4 +1,4 @@
-"""Lance une comparaison historique pour un persona."""
+"""Lance une comparaison historique et valide le profil d'un persona."""
 
 from __future__ import annotations
 
@@ -9,9 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from alphaforge.engine import EngineError, compare_case, run_analysis, write_result
+from alphaforge.profile_checks import validate_profile
 
 
 ROOT = Path(__file__).resolve().parent
+DATA_DIR = ROOT / "data"
 PERSONAS = ("amira", "mateo", "robert")
 METRIC_LABELS = (
     ("total_return", "Total return"),
@@ -28,6 +30,17 @@ def _pp(value: float) -> str:
     return f"{value * 100:+.1f} pp"
 
 
+def add_profile_findings(result: dict[str, Any]) -> dict[str, Any]:
+    scenario = {
+        "symbol": result["scenario"]["added_symbol"],
+        "target_weight_pct": result["scenario"]["target_weight_pct"],
+    }
+    result["profile_findings"] = validate_profile(
+        result["persona"], scenario, result, DATA_DIR
+    )
+    return result
+
+
 def format_summary(result: dict[str, Any]) -> str:
     scenario = result["scenario"]
     period = result["period"]
@@ -42,6 +55,8 @@ def format_summary(result: dict[str, Any]) -> str:
         after = result["after"]["metrics"][key]
         delta = result["delta_after_minus_before"]["metrics"][key]
         lines.append(f"{label:<20}{_pct(before):>10}{_pct(after):>10}{_pp(delta):>12}")
+    for finding in result.get("profile_findings", []):
+        lines.append(f"[{finding['status']}] {finding['title']}")
     return "\n".join(lines)
 
 
@@ -63,7 +78,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def _run_all(as_json: bool) -> None:
     results = {}
     for persona in PERSONAS:
-        result = compare_case(ROOT, persona)
+        result = add_profile_findings(compare_case(ROOT, persona))
         output_path = ROOT / "results" / f"{persona}_comparison.json"
         write_result(result, output_path)
         results[persona] = result
@@ -97,6 +112,8 @@ def main() -> None:
         payload = {"status": "error", "error": {"code": error.code, "message": error.message}}
         print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
         sys.exit(1)
+
+    add_profile_findings(result)
 
     if args.output:
         write_result(result, _resolve(args.output))
