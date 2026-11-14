@@ -124,6 +124,8 @@ def load_case(
 
     def find(items: list[dict[str, Any]], label: str) -> dict[str, Any]:
         matches = [item for item in items if item["id" if label == "persona" else "persona_id"] == persona_id]
+        if not matches and label == "persona":
+            raise EngineError("INVALID_PERSONA", f"Persona inconnu: {persona_id}")
         if len(matches) != 1:
             raise ValueError(f"Il faut exactement un {label} pour {persona_id}")
         return matches[0]
@@ -140,8 +142,10 @@ def load_persona_and_portfolio(
     portfolios = _read_json(data_dir / "portfolios.json")["portfolios"]
 
     persona_matches = [item for item in personas if item["id"] == persona_id]
-    if len(persona_matches) != 1:
+    if not persona_matches:
         raise EngineError("INVALID_PERSONA", f"Persona inconnu: {persona_id}")
+    if len(persona_matches) != 1:
+        raise ValueError(f"Il faut exactement un persona pour {persona_id}")
     portfolio_matches = [item for item in portfolios if item["persona_id"] == persona_id]
     if len(portfolio_matches) != 1:
         raise ValueError(f"Il faut exactement un portefeuille pour {persona_id}")
