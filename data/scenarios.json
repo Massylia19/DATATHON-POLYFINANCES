@@ -1,0 +1,35 @@
+{
+  "disclaimer": "Ces ajouts sont des hypothèses de démonstration destinées à tester les contrôles de l'application. Ils ne constituent pas des recommandations.",
+  "weight_unit": "percent",
+  "funding_assumption": "Pour conserver un total de 100 %, le poids cible de l'ajout est financé en réduisant proportionnellement toutes les positions du portefeuille initial.",
+  "scenarios": [
+    {
+      "persona_id": "amira",
+      "scenario_id": "amira_add_nvda",
+      "description": "Ajouter un actif technologique et mesurer la concentration supplémentaire.",
+      "symbol": "NVDA",
+      "target_weight_pct": 10,
+      "absent_from_initial_portfolio": true,
+      "test_focus": "concentration sectorielle, chevauchement avec QQQ et contribution au risque"
+    },
+    {
+      "persona_id": "mateo",
+      "scenario_id": "mateo_add_xom",
+      "description": "Ajouter un actif dont la compatibilité avec ses préférences ESG doit être vérifiée.",
+      "symbol": "XOM",
+      "target_weight_pct": 10,
+      "absent_from_initial_portfolio": true,
+      "esg_compatibility_status": "requires_verification",
+      "test_focus": "compatibilité de l'exposition au secteur de l'énergie avec les préférences ESG, preuves datées et traçables"
+    },
+    {
+      "persona_id": "robert",
+      "scenario_id": "robert_add_tsla",
+      "description": "Ajouter un actif volatil et examiner le conflit possible avec son objectif.",
+      "symbol": "TSLA",
+      "target_weight_pct": 5,
+      "absent_from_initial_portfolio": true,
+      "test_focus": "volatilité, perte maximale et conflit avec la préservation du capital"
+    }
+  ]
+}

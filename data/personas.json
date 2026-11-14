@@ -1,0 +1,60 @@
+{
+  "personas": [
+    {
+      "id": "amira",
+      "name": "Amira",
+      "risk_level": "high",
+      "horizon_years_min": 15,
+      "horizon_years_max": null,
+      "objective": "Croissance à long terme",
+      "preferences": [
+        "IA",
+        "technologies",
+        "crypto",
+        "diversification"
+      ],
+      "missing_information": [
+        "loss_absorption_capacity",
+        "liquidity_needs",
+        "planned_withdrawals"
+      ]
+    },
+    {
+      "id": "mateo",
+      "name": "Mateo",
+      "risk_level": "moderate",
+      "horizon_years_min": 8,
+      "horizon_years_max": 12,
+      "objective": "Croissance équilibrée",
+      "preferences": [
+        "ESG",
+        "stabilité",
+        "peu de spéculation"
+      ],
+      "missing_information": [
+        "loss_absorption_capacity",
+        "liquidity_needs",
+        "planned_withdrawals"
+      ]
+    },
+    {
+      "id": "robert",
+      "name": "Robert",
+      "risk_level": "low_to_moderate",
+      "horizon_years_min": 3,
+      "horizon_years_max": 5,
+      "objective": "Préservation du capital et croissance",
+      "preferences": [
+        "entreprises établies",
+        "stabilité",
+        "peu de crypto"
+      ],
+      "missing_information": [
+        "loss_absorption_capacity",
+        "liquidity_needs",
+        "planned_withdrawals"
+      ]
+    }
+  ],
+  "data_policy": "Aucun revenu ni aucune capacité financière ne sont inférés à partir de la profession."
+}

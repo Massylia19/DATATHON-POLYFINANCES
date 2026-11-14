@@ -1,0 +1,114 @@
+{
+  "analysis_type": "hypothetical_historical_comparison",
+  "persona": {
+    "id": "amira",
+    "risk_level": "high",
+    "objective": "Croissance à long terme",
+    "preferences": [
+      "IA",
+      "technologies",
+      "crypto",
+      "diversification"
+    ]
+  },
+  "scenario": {
+    "scenario_id": "amira_add_nvda",
+    "added_symbol": "NVDA",
+    "target_weight_pct": 10
+  },
+  "period": {
+    "start": "2021-11-12",
+    "end": "2026-11-12",
+    "common_observations": 1228
+  },
+  "currency": "CAD",
+  "methodology": {
+    "price_field": "adj_close",
+    "fx_conversion": "Prix USD multiplié par USD/CAD (CAD pour 1 USD); dernier taux connu reporté si absent.",
+    "calendar_alignment": "Intersection stricte des dates ayant un prix pour tous les actifs avant et après.",
+    "simulation": "Achat aux pondérations initiales, quantités fixes, distributions reflétées par adj_close, aucun rééquilibrage périodique.",
+    "volatility": "Écart-type échantillonnal des rendements entre observations communes, annualisé avec sqrt(252)."
+  },
+  "before": {
+    "weights_by_asset_pct": {
+      "SPY": 40.0,
+      "QQQ": 30.0,
+      "SHOP.TO": 15.0,
+      "BTC-USD": 15.0
+    },
+    "weights_by_class_pct": {
+      "crypto": 15.0,
+      "equity": 15.0,
+      "etf_equity": 70.0
+    },
+    "metrics": {
+      "total_return": 0.7367442289,
+      "annualized_volatility": 0.2179988349,
+      "max_drawdown": -0.3864223762
+    }
+  },
+  "after": {
+    "weights_by_asset_pct": {
+      "SPY": 36.0,
+      "QQQ": 27.0,
+      "SHOP.TO": 13.5,
+      "BTC-USD": 13.5,
+      "NVDA": 10.0
+    },
+    "weights_by_class_pct": {
+      "crypto": 13.5,
+      "equity": 23.5,
+      "etf_equity": 63.0
+    },
+    "metrics": {
+      "total_return": 1.1862126991,
+      "annualized_volatility": 0.255958911,
+      "max_drawdown": -0.4004060225
+    }
+  },
+  "delta_after_minus_before": {
+    "metrics": {
+      "total_return": 0.4494684703,
+      "annualized_volatility": 0.0379600761,
+      "max_drawdown": -0.0139836463
+    },
+    "weights_by_asset_pct": {
+      "BTC-USD": -1.5,
+      "NVDA": 10.0,
+      "QQQ": -3.0,
+      "SHOP.TO": -1.5,
+      "SPY": -4.0
+    }
+  },
+  "sources": [
+    {
+      "file": "assets_universe.csv",
+      "source": "Compiled by organizers; sector labels follow GICS sector names",
+      "source_url": "n/a",
+      "retrieved_on": "2026-11-13",
+      "limitations": "Sector labels are organizer-assigned and simplified; ETF 'sector' describes exposure; not an official classification"
+    },
+    {
+      "file": "prices_daily.csv",
+      "source": "Yahoo Finance via the open-source yfinance Python library",
+      "source_url": "https://finance.yahoo.com",
+      "retrieved_on": "2026-11-13",
+      "limitations": "adj_close is back-adjusted for splits and dividends so values shift when data is re-downloaded; crypto rows are UTC calendar days; Yahoo data is not exchange-certified"
+    },
+    {
+      "file": "fx_usdcad_daily.csv",
+      "source": "Bank of Canada Valet API series FXUSDCAD",
+      "source_url": "https://www.bankofcanada.ca/valet/observations/FXUSDCAD/json",
+      "retrieved_on": "2026-11-13",
+      "limitations": "Single daily rate published around 16:30 ET; no rate on Canadian holidays"
+    }
+  ],
+  "limitations": [
+    "Comparaison historique hypothétique; ce n'est ni une prévision ni une recommandation.",
+    "Le biais du survivant de l'univers choisi en 2026 demeure présent.",
+    "L'intersection stricte retire les fins de semaine crypto et les dates où un marché est fermé.",
+    "Le report du taux FX concerne uniquement la conversion, jamais les prix des actifs.",
+    "Les classes et secteurs décrivent les instruments de premier niveau; aucune composition interne de SPY ou QQQ n'est utilisée.",
+    "La méthode acheter-et-conserver laisse les pondérations dériver après la date initiale."
+  ]
+}
