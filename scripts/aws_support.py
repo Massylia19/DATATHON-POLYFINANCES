@@ -66,14 +66,10 @@ def explain_aws_error(error: Exception, *, invalid_model_is_possible: bool = Fal
         return "Les identifiants AWS sont invalides ou expirés."
     if code in {"AccessDenied", "AccessDeniedException", "UnauthorizedOperation"}:
         return "Accès refusé par IAM. Aucune permission n’a été modifiée."
-    if invalid_model_is_possible and code in {
-        "ValidationException",
-        "ResourceNotFoundException",
-    }:
-        return (
-            "Identifiant de profil ou de modèle invalide, non disponible dans "
-            "us-east-1, ou incompatible avec Converse."
-        )
+    if code == "ValidationException":
+        return "Requête AWS invalide : vérifier les paramètres et le message détaillé."
+    if invalid_model_is_possible and code == "ResourceNotFoundException":
+        return "Modèle ou profil introuvable dans la région configurée."
     if code in {
         "ServiceUnavailable",
         "ServiceUnavailableException",

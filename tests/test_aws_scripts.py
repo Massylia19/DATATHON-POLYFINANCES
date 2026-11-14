@@ -66,13 +66,21 @@ class ProfileListingTests(unittest.TestCase):
             {"Error": {"Code": "ValidationException", "Message": "detail"}},
             "Converse",
         )
+        not_found = ClientError(
+            {"Error": {"Code": "ResourceNotFoundException", "Message": "detail"}},
+            "Converse",
+        )
         offline = EndpointConnectionError(endpoint_url="https://example.invalid")
 
         self.assertIn("expiré", explain_aws_error(expired))
         self.assertIn("Accès refusé", explain_aws_error(denied))
         self.assertIn(
-            "incompatible avec Converse",
+            "vérifier les paramètres",
             explain_aws_error(invalid, invalid_model_is_possible=True),
+        )
+        self.assertIn(
+            "introuvable",
+            explain_aws_error(not_found, invalid_model_is_possible=True),
         )
         self.assertIn("inaccessible", explain_aws_error(offline))
 
