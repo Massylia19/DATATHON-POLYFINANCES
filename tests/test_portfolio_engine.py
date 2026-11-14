@@ -3,9 +3,11 @@ import unittest
 from pathlib import Path
 
 from alphaforge.engine import (
+    EngineError,
     apply_scenario,
     calculate_metrics,
     compare_case,
+    run_analysis,
     simulate_buy_and_hold,
 )
 
@@ -80,6 +82,58 @@ class IntegrationTests(unittest.TestCase):
             set(result["before"]["metrics"]),
             {"total_return", "annualized_volatility", "max_drawdown"},
         )
+
+    def test_three_documented_scenarios_and_series_contract(self):
+        cases = (
+            ("amira", "NVDA", 10),
+            ("mateo", "XOM", 10),
+            ("robert", "TSLA", 5),
+        )
+        for persona_id, symbol, weight in cases:
+            with self.subTest(persona_id=persona_id):
+                result = run_analysis(persona_id, symbol, weight, root=ROOT)
+                self.assertEqual(result["scenario"]["added_symbol"], symbol)
+                self.assertEqual(result["scenario"]["target_weight_pct"], weight)
+                self.assertAlmostEqual(
+                    sum(result["before"]["weights_by_asset_pct"].values()), 100.0
+                )
+                self.assertAlmostEqual(
+                    sum(result["after"]["weights_by_asset_pct"].values()), 100.0
+                )
+                series = result["series"]
+                self.assertEqual(series["before"][0], 100.0)
+                self.assertEqual(series["after"][0], 100.0)
+                self.assertEqual(len(series["dates"]), len(series["before"]))
+                self.assertEqual(len(series["dates"]), len(series["after"]))
+                self.assertEqual(
+                    len(series["dates"]), result["period"]["common_observations"]
+                )
+
+    def test_custom_amira_weights_are_used(self):
+        for weight in (5, 20):
+            with self.subTest(weight=weight):
+                result = run_analysis("amira", "NVDA", weight, root=ROOT)
+                self.assertEqual(
+                    result["after"]["weights_by_asset_pct"]["NVDA"], weight
+                )
+                self.assertAlmostEqual(
+                    sum(result["after"]["weights_by_asset_pct"].values()), 100.0
+                )
+
+    def test_invalid_inputs_are_rejected_with_codes(self):
+        cases = (
+            (("unknown", "NVDA", 10), "INVALID_PERSONA"),
+            (("amira", "NOT-A-SYMBOL", 10), "UNKNOWN_SYMBOL"),
+            (("amira", "NVDA", 0), "INVALID_WEIGHT"),
+            (("amira", "NVDA", 100), "INVALID_WEIGHT"),
+            (("amira", "NVDA", float("nan")), "INVALID_WEIGHT"),
+            (("amira", "SPY", 10), "ASSET_ALREADY_HELD"),
+        )
+        for arguments, expected_code in cases:
+            with self.subTest(arguments=arguments):
+                with self.assertRaises(EngineError) as caught:
+                    run_analysis(*arguments, root=ROOT)
+                self.assertEqual(caught.exception.code, expected_code)
 
 
 if __name__ == "__main__":

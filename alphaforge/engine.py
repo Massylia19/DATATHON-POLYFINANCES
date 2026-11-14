@@ -11,6 +11,7 @@ import bisect
 import csv
 import json
 import math
+import numbers
 import statistics
 from collections import defaultdict
 from copy import deepcopy
@@ -20,6 +21,39 @@ from typing import Any, Iterable
 
 
 WEIGHT_TOLERANCE = 1e-9
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+class EngineError(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def _validate_weight(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise EngineError("INVALID_WEIGHT", "Le poids cible doit être un nombre")
+    weight = float(value)
+    if not math.isfinite(weight):
+        raise EngineError("INVALID_WEIGHT", "Le poids cible doit être un nombre fini")
+    if not 0 < weight < 100:
+        raise EngineError(
+            "INVALID_WEIGHT", "Le poids cible doit être strictement entre 0 et 100"
+        )
+    return weight
+
+
+def _normalize_symbol(symbol: Any, assets: dict[str, dict[str, str]]) -> str:
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise EngineError("UNKNOWN_SYMBOL", "Le symbole doit être un texte non vide")
+    normalized = symbol.strip().upper()
+    if normalized not in assets:
+        raise EngineError(
+            "UNKNOWN_SYMBOL", f"Cet actif est absent du jeu de données: {normalized}"
+        )
+    return normalized
 
 
 def _weight_map(portfolio: dict[str, Any]) -> dict[str, float]:
@@ -53,11 +87,11 @@ def apply_scenario(
     initial_weights = _weight_map(portfolio)
     new_symbol = scenario["symbol"]
     if new_symbol in initial_weights:
-        raise ValueError(f"L'actif du scénario existe déjà: {new_symbol}")
+        raise EngineError(
+            "ASSET_ALREADY_HELD", f"L'actif du scénario existe déjà: {new_symbol}"
+        )
 
-    target_weight = float(scenario["target_weight_pct"])
-    if not 0 < target_weight < 100:
-        raise ValueError("Le poids cible doit être strictement entre 0 et 100")
+    target_weight = _validate_weight(scenario["target_weight_pct"])
 
     scale = 1.0 - target_weight / 100.0
     result = deepcopy(portfolio)
@@ -97,6 +131,21 @@ def load_case(
     return find(personas, "persona"), find(portfolios, "portefeuille"), find(
         scenarios, "scénario"
     )
+
+
+def load_persona_and_portfolio(
+    data_dir: Path, persona_id: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    personas = _read_json(data_dir / "personas.json")["personas"]
+    portfolios = _read_json(data_dir / "portfolios.json")["portfolios"]
+
+    persona_matches = [item for item in personas if item["id"] == persona_id]
+    if len(persona_matches) != 1:
+        raise EngineError("INVALID_PERSONA", f"Persona inconnu: {persona_id}")
+    portfolio_matches = [item for item in portfolios if item["persona_id"] == persona_id]
+    if len(portfolio_matches) != 1:
+        raise ValueError(f"Il faut exactement un portefeuille pour {persona_id}")
+    return persona_matches[0], portfolio_matches[0]
 
 
 def load_asset_universe(path: Path) -> dict[str, dict[str, str]]:
@@ -150,7 +199,9 @@ def load_prices_in_cad(
     requested = set(symbols)
     missing_assets = requested.difference(assets)
     if missing_assets:
-        raise ValueError(f"Symboles absents de l'univers: {sorted(missing_assets)}")
+        raise EngineError(
+            "UNKNOWN_SYMBOL", f"Symboles absents de l'univers: {sorted(missing_assets)}"
+        )
 
     series: dict[str, dict[date, float]] = {symbol: {} for symbol in requested}
     with prices_path.open(encoding="utf-8-sig", newline="") as handle:
@@ -188,7 +239,9 @@ def align_on_common_dates(
     common_dates = set.intersection(*(set(values) for values in series.values()))
     dates = sorted(common_dates)
     if len(dates) < 2:
-        raise ValueError("Moins de deux dates communes entre les actifs")
+        raise EngineError(
+            "INSUFFICIENT_DATA", "Moins de deux dates communes entre les actifs"
+        )
     return dates, {
         symbol: [values[current_date] for current_date in dates]
         for symbol, values in series.items()
@@ -249,9 +302,14 @@ def aggregate_weights_by_class(
 def load_sources(path: Path) -> list[dict[str, str]]:
     with path.open(encoding="utf-8-sig", newline="") as handle:
         rows = list(csv.DictReader(handle))
-    wanted = {"assets_universe.csv", "prices_daily.csv", "fx_usdcad_daily.csv"}
+    wanted = {
+        "assets_universe.csv": "src_assets_universe",
+        "prices_daily.csv": "src_prices_daily",
+        "fx_usdcad_daily.csv": "src_fx_usdcad",
+    }
     return [
         {
+            "id": wanted[row["file"]],
             "file": row["file"],
             "source": row["source"],
             "source_url": row["source_url"],
@@ -263,14 +321,64 @@ def load_sources(path: Path) -> list[dict[str, str]]:
     ]
 
 
+def team_sources() -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "src_personas",
+            "file": "data/personas.json",
+            "source": "Équipe AlphaForge: profils fictifs inspirés du cas officiel",
+            "source_url": None,
+            "retrieved_on": None,
+            "limitations": "Profils de démonstration; capacité de perte, besoins de liquidités et retraits prévus inconnus.",
+        },
+        {
+            "id": "src_portfolios",
+            "file": "data/portfolios.json",
+            "source": "Équipe AlphaForge: portefeuilles fictifs de démonstration",
+            "source_url": None,
+            "retrieved_on": None,
+            "limitations": "Hypothèses de démonstration, pas des allocations recommandées ni des conseils en placement.",
+        },
+    ]
+
+
 def _rounded(value: float) -> float:
     return round(value, 10)
 
 
+def run_analysis(
+    persona_id: str,
+    symbol: str,
+    target_weight_pct: float,
+    root: Path = PROJECT_ROOT,
+) -> dict[str, Any]:
+    if not isinstance(persona_id, str):
+        raise EngineError("INVALID_PERSONA", "Le persona doit être un texte")
+    persona, initial = load_persona_and_portfolio(root / "data", persona_id)
+    assets = load_asset_universe(root / "data" / "market" / "assets_universe.csv")
+    symbol = _normalize_symbol(symbol, assets)
+    weight = _validate_weight(target_weight_pct)
+    scenario = {
+        "persona_id": persona_id,
+        "scenario_id": f"{persona_id}_add_{symbol.lower()}",
+        "symbol": symbol,
+        "target_weight_pct": weight,
+    }
+    return _compare(root, persona, initial, scenario)
+
+
 def compare_case(root: Path, persona_id: str) -> dict[str, Any]:
-    data_dir = root / "data"
+    persona, initial, scenario = load_case(root / "data", persona_id)
+    return _compare(root, persona, initial, scenario)
+
+
+def _compare(
+    root: Path,
+    persona: dict[str, Any],
+    initial: dict[str, Any],
+    scenario: dict[str, Any],
+) -> dict[str, Any]:
     dataset_dir = root / "data" / "market"
-    persona, initial, scenario = load_case(data_dir, persona_id)
     modified = apply_scenario(initial, scenario)
 
     before_weights = _weight_map(initial)
@@ -299,16 +407,12 @@ def compare_case(root: Path, persona_id: str) -> dict[str, Any]:
     }
     return {
         "analysis_type": "hypothetical_historical_comparison",
-        "persona": {
-            "id": persona["id"],
-            "risk_level": persona["risk_level"],
-            "objective": persona["objective"],
-            "preferences": persona["preferences"],
-        },
+        "persona": deepcopy(persona),
         "scenario": {
             "scenario_id": scenario["scenario_id"],
             "added_symbol": scenario["symbol"],
             "target_weight_pct": scenario["target_weight_pct"],
+            "funding_rule": "proportional_reduction",
         },
         "period": {
             "start": dates[0].isoformat(),
@@ -322,6 +426,17 @@ def compare_case(root: Path, persona_id: str) -> dict[str, Any]:
             "calendar_alignment": "Intersection stricte des dates ayant un prix pour tous les actifs avant et après.",
             "simulation": "Achat aux pondérations initiales, quantités fixes, distributions reflétées par adj_close, aucun rééquilibrage périodique.",
             "volatility": "Écart-type échantillonnal des rendements entre observations communes, annualisé avec sqrt(252).",
+            "funding": "Pour un poids cible p, chaque poids existant est multiplié par (1 - p/100), puis p % est attribué au nouvel actif.",
+            "series_base": "Les courbes valent 100 à la première date commune et représentent la valeur du portefeuille simulé.",
+            "annualization_note": "sqrt(252) est une convention approximative: l'intersection des calendriers rend les intervalles entre observations irréguliers.",
+            "max_drawdown": "Plus forte baisse depuis un sommet, mesurée uniquement sur les observations retenues; une baisse entre ces dates peut être omise.",
+            "weights_shown": "Les pondérations avant/après sont les allocations initiales des simulations; elles dérivent ensuite avec les performances.",
+            "costs": "Frais, taxes et coûts de transaction exclus de la simulation.",
+        },
+        "series": {
+            "dates": [current_date.isoformat() for current_date in dates],
+            "before": [value * 100.0 for value in before_values],
+            "after": [value * 100.0 for value in after_values],
         },
         "before": {
             "weights_by_asset_pct": before_weights,
@@ -340,7 +455,7 @@ def compare_case(root: Path, persona_id: str) -> dict[str, Any]:
                 for symbol in all_symbols
             },
         },
-        "sources": load_sources(dataset_dir / "sources_metadata.csv"),
+        "sources": load_sources(dataset_dir / "sources_metadata.csv") + team_sources(),
         "limitations": [
             "Comparaison historique hypothétique; ce n'est ni une prévision ni une recommandation.",
             "Le biais du survivant de l'univers choisi en 2026 demeure présent.",
@@ -348,12 +463,17 @@ def compare_case(root: Path, persona_id: str) -> dict[str, Any]:
             "Le report du taux FX concerne uniquement la conversion, jamais les prix des actifs.",
             "Les classes et secteurs décrivent les instruments de premier niveau; aucune composition interne de SPY ou QQQ n'est utilisée.",
             "La méthode acheter-et-conserver laisse les pondérations dériver après la date initiale.",
+            "Les rendements historiques ne préjugent pas des rendements futurs.",
+            "Frais, taxes et coûts de transaction ne sont pas modélisés.",
+            "La volatilité annualisée avec sqrt(252) est approximative car les intervalles entre observations sont irréguliers.",
+            "La baisse maximale peut omettre des baisses survenues entre les observations retenues.",
         ],
     }
 
 
 def write_result(result: dict[str, Any], output_path: Path) -> None:
+    text = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="\n") as handle:
-        json.dump(result, handle, ensure_ascii=False, indent=2)
+        handle.write(text)
         handle.write("\n")

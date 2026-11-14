@@ -1,0 +1,178 @@
+/* =========================================================
+   ALPHAFORGE — THÈMES
+   Système : thème Streamlit par défaut, non modifié
+   Clair : fond lime + texte noir
+   Sombre : fond vert foncé + texte blanc
+
+   Les variables (--page-bg, --text-color, etc.) sont définies
+   dans app.py (dictionnaire THEMES) et injectées sur :root
+   uniquement quand Light ou Dark est choisi. Ce fichier n'est
+   donc chargé que pour ces deux thèmes.
+   ========================================================= */
+
+
+/* ---------------------------------------------------------
+   1. FONDS ET CONTENEURS
+   --------------------------------------------------------- */
+
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stHeader"] {
+    background-color: var(--page-bg);
+    color: var(--text-color);
+}
+
+
+/* ---------------------------------------------------------
+   2. TEXTES ET TITRES
+   --------------------------------------------------------- */
+
+[data-testid="stAppViewContainer"] h1,
+[data-testid="stAppViewContainer"] h2,
+[data-testid="stAppViewContainer"] h3,
+[data-testid="stAppViewContainer"] h4,
+[data-testid="stAppViewContainer"] p,
+[data-testid="stAppViewContainer"] span,
+[data-testid="stAppViewContainer"] label,
+[data-testid="stAppViewContainer"] li {
+    color: var(--text-color);
+}
+
+[data-testid="stCaptionContainer"] {
+    color: var(--secondary-text);
+}
+
+
+/* ---------------------------------------------------------
+   3. BOUTONS
+   --------------------------------------------------------- */
+
+.stButton button,
+.stFormSubmitButton button {
+    background-color: var(--button-bg);
+    color: var(--button-text);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.stButton button:hover,
+.stFormSubmitButton button:hover {
+    opacity: 0.85;
+    border-color: var(--text-color);
+    color: var(--button-text);
+}
+
+
+/* ---------------------------------------------------------
+   4. CHAMPS DE SAISIE ET MENUS DÉROULANTS
+   --------------------------------------------------------- */
+
+[data-baseweb="select"] > div,
+[data-baseweb="input"] > div,
+[data-baseweb="textarea"] > div {
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+[data-baseweb="select"] *,
+[data-baseweb="input"] *,
+[data-baseweb="textarea"] * {
+    color: var(--text-color);
+}
+
+/* La liste déroulante est rendue dans un portail, en dehors de
+   stAppViewContainer : elle a besoin de ses propres règles. */
+[data-baseweb="popover"],
+[data-baseweb="popover"] ul,
+[data-baseweb="popover"] li {
+    background-color: var(--input-bg);
+    color: var(--text-color);
+}
+
+
+/* ---------------------------------------------------------
+   5. SLIDERS ET BOUTONS RADIO
+   --------------------------------------------------------- */
+
+[data-testid="stSlider"] {
+    color: var(--text-color);
+}
+
+[data-testid="stRadio"] label {
+    color: var(--text-color);
+}
+
+
+/* ---------------------------------------------------------
+   6. TABLEAUX
+   --------------------------------------------------------- */
+
+[data-testid="stDataFrame"],
+[data-testid="stTable"] {
+    background-color: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+
+/* ---------------------------------------------------------
+   7. INDICATEURS / MÉTRIQUES
+   --------------------------------------------------------- */
+
+[data-testid="stMetric"] {
+    background-color: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 15px;
+}
+
+[data-testid="stMetricLabel"],
+[data-testid="stMetricValue"],
+[data-testid="stMetricDelta"] {
+    color: var(--text-color);
+}
+
+
+/* ---------------------------------------------------------
+   8. ALERTES ET MESSAGES
+   --------------------------------------------------------- */
+
+[data-testid="stAlert"] {
+    border-radius: 8px;
+}
+
+
+/* ---------------------------------------------------------
+   9. SECTIONS DÉPLIABLES
+   --------------------------------------------------------- */
+
+[data-testid="stExpander"] {
+    background-color: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] summary span {
+    color: var(--text-color);
+}
+
+
+/* ---------------------------------------------------------
+   10. FORMULAIRES ET SÉPARATEURS
+   --------------------------------------------------------- */
+
+[data-testid="stForm"] {
+    background-color: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 20px;
+}
+
+hr {
+    border-color: var(--border-color);
+}
