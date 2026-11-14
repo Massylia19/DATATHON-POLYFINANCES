@@ -4,6 +4,10 @@ __pycache__/
 venv/
 .pytest_cache/
 .coverage
+*.egg-info/
+.env
+.env.*
+!.env.example
 
 # Documents de référence locaux; non requis pour exécuter le moteur.
 Datathon - Case Officiel 2026 FR.pdf

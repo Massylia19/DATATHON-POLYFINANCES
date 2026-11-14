@@ -7,7 +7,9 @@ name = "alphaforge-portfolio-engine"
 version = "0.1.0"
 description = "Comparaison historique reproductible de portefeuilles fictifs"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+  "boto3>=1.35.0,<2.0.0",
+]
 
 [tool.setuptools]
 packages = ["alphaforge"]
