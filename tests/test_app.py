@@ -28,6 +28,9 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertTrue(
             any("Explication locale déterministe" in item.value for item in app.caption)
         )
+        self.assertTrue(
+            any("Contrôles du profil" in item.value for item in app.markdown)
+        )
 
 
 if __name__ == "__main__":

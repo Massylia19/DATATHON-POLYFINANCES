@@ -9,6 +9,7 @@ import streamlit as st
 
 try:
     from alphaforge.engine import run_analysis, load_asset_universe
+    from alphaforge.profile_checks import validate_profile
 
     ENGINE_AVAILABLE = True
 except ImportError:
@@ -199,6 +200,15 @@ if submitted:
                 target_weight,
                 root=ROOT,
             )
+            profile_findings = validate_profile(
+                persona,
+                {
+                    "symbol": selected_symbol,
+                    "target_weight_pct": target_weight,
+                },
+                result,
+                DATA_DIR,
+            )
     except (OSError, KeyError, ValueError, ZeroDivisionError) as exc:
         st.error(f"Le calcul n’a pas pu être effectué : {exc}")
         st.stop()
@@ -273,19 +283,23 @@ if submitted:
     st.write(fallback_explanation(persona, result))
     st.caption(
         "Explication locale déterministe. "
-        "L’agent IA et les contrôles des profils restent à intégrer."
+        "L’agent IA reste à intégrer."
     )
 
-    if persona["id"] == "mateo" and selected_symbol in {"XOM", "TSLA", "CNQ.TO", "ENB.TO"}:
-        st.warning(
-            f"La compatibilité ESG de {selected_symbol} demande une vérification avec des preuves datées; "
-            "le jeu de prix ne permet pas de conclure sur ce point."
-        )
-    if persona["id"] == "robert" and selected_symbol in {"BTC-USD", "ETH-USD", "NVDA", "TSLA"}:
-        st.warning(
-            f"L’ajout de {selected_symbol} mérite un examen particulier au regard de l’objectif "
-            "de préservation du capital de Robert. Cette alerte ne constitue pas une mesure ESG ou un blocage automatique."
-        )
+    st.markdown("**Contrôles du profil**")
+    for finding in profile_findings:
+        message = f"**{finding['title']}** — {finding['message']}"
+        if finding["status"] == "tension":
+            st.warning(message)
+        elif finding["status"] == "consistent":
+            st.success(message)
+        else:
+            st.info(message)
+        if finding["missing_information"]:
+            st.caption(
+                "Informations manquantes : "
+                + ", ".join(finding["missing_information"])
+            )
 
     with st.expander("Méthode, sources et limites"):
         st.write(result["methodology"]["simulation"])

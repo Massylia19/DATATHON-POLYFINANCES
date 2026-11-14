@@ -1,0 +1,26 @@
+{
+    "XOM": [
+        {
+            "id": "src_xom_sustainability_metrics_2026",
+            "topic": "environment",
+            "claim": "ExxonMobil déclare 111 millions de tonnes de CO2e d'émissions Scope 1 et Scope 2 pour 2025.",
+            "publisher": "ExxonMobil",
+            "title": "2026 Sustainability Report - Metrics and Data",
+            "url": "https://corporate.exxonmobil.com/publications/metrics-and-data",
+            "published_on": "2026-05-05",
+            "accessed_on": "2026-11-14",
+            "data_year": 2025,
+            "limitation": "Donnée déclarée par l'entreprise; elle ne constitue pas une évaluation ESG indépendante."
+        },
+        {
+            "id": "src_xom_advocacy_report_2026",
+            "topic": "governance",
+            "claim": "ExxonMobil publie ses positions de politiques publiques et ses activités de lobbying, et indique soutenir des politiques favorables à l'industrie énergétique.",
+            "publisher": "ExxonMobil",
+            "title": "Advocacy Report",
+            "url": "https://corporate.exxonmobil.com/who-we-are/policy/exxonmobil-advocacy-report",
+            "accessed_on": "2026-11-14",
+            "limitation": "La publication de ces informations ne permet pas, à elle seule, de déterminer leur compatibilité avec les valeurs ESG de Mateo."
+        }
+    ]
+}
