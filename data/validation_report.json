@@ -1,0 +1,55 @@
+{
+  "validated_on": "2026-11-14",
+  "dataset_directory": "alphaforge_starter",
+  "dataset_retrieved_on": "2026-11-13",
+  "status": "passed_with_documented_caveats",
+  "checks": {
+    "all_selected_symbols_exist_in_assets_universe": true,
+    "portfolio_weight_totals_pct": {
+      "amira": 100,
+      "mateo": 100,
+      "robert": 100
+    },
+    "all_scenario_symbols_absent_from_initial_portfolio": true,
+    "adjusted_prices_available_for_common_coverage_window": {
+      "result": true,
+      "start": "2021-11-12",
+      "end": "2026-11-12",
+      "note": "Tous les symboles retenus ont des observations aux deux bornes. Les calendriers ne sont pas alignés: les actifs de marché ont 1 255 observations et BTC-USD en a 1 827."
+    },
+    "currencies_identified": true,
+    "duplicate_asset_tickers": 0,
+    "duplicate_price_date_ticker_keys": 0,
+    "missing_adj_close_values": 0,
+    "missing_price_currency_values": 0,
+    "duplicate_fx_dates": 0,
+    "missing_usdcad_values": 0,
+    "fx_coverage": {
+      "start": "2021-11-12",
+      "end": "2026-11-12"
+    },
+    "esg_evidence_has_source_and_date": true
+  },
+  "selected_assets": [
+    { "symbol": "BTC-USD", "currency": "USD", "price_rows": 1827 },
+    { "symbol": "ESGV", "currency": "USD", "price_rows": 1255 },
+    { "symbol": "FTS.TO", "currency": "CAD", "price_rows": 1255 },
+    { "symbol": "GLD", "currency": "USD", "price_rows": 1255 },
+    { "symbol": "NVDA", "currency": "USD", "price_rows": 1255 },
+    { "symbol": "QQQ", "currency": "USD", "price_rows": 1255 },
+    { "symbol": "SHOP.TO", "currency": "CAD", "price_rows": 1255 },
+    { "symbol": "SPY", "currency": "USD", "price_rows": 1255 },
+    { "symbol": "TSLA", "currency": "USD", "price_rows": 1255 },
+    { "symbol": "XBB.TO", "currency": "CAD", "price_rows": 1255 },
+    { "symbol": "XIU.TO", "currency": "CAD", "price_rows": 1255 },
+    { "symbol": "XOM", "currency": "USD", "price_rows": 1255 },
+    { "symbol": "ZST.TO", "currency": "CAD", "price_rows": 1255 }
+  ],
+  "caveats": [
+    "Utiliser adj_close pour les rendements.",
+    "Convertir les prix USD en CAD avec fx_usdcad_daily.csv et reporter le dernier taux connu lors des jours fériés canadiens.",
+    "Définir explicitement une règle d'alignement des calendriers avant les calculs; ne pas remplir aveuglément les prix de marché.",
+    "ZST.TO contient une observation à volume nul le 2022-07-06, signalée dans le README.",
+    "ESGV repose sur un filtrage par exclusions, pas sur une cote ESG universelle; revérifier la méthodologie et les constituants à la date de l'analyse."
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "disclaimer": "Ces portefeuilles sont des hypothèses de démonstration et des scénarios pédagogiques à tester. Ils ne constituent pas des allocations recommandées ni des conseils en placement.",
+  "weight_unit": "percent",
+  "portfolios": [
+    {
+      "persona_id": "amira",
+      "is_demonstration_hypothesis": true,
+      "construction_note": "Combine une exposition diversifiée aux actions, une forte composante technologique et une petite composante crypto afin de rendre la concentration mesurable.",
+      "positions": [
+        {
+          "symbol": "SPY",
+          "weight_pct": 40
+        },
+        {
+          "symbol": "QQQ",
+          "weight_pct": 30
+        },
+        {
+          "symbol": "SHOP.TO",
+          "weight_pct": 15
+        },
+        {
+          "symbol": "BTC-USD",
+          "weight_pct": 15
+        }
+      ]
+    },
+    {
+      "persona_id": "mateo",
+      "is_demonstration_hypothesis": true,
+      "construction_note": "Mélange une exposition aux actions américaines filtrée selon une méthodologie ESG avec des obligations canadiennes, une entreprise de services publics et de l'or.",
+      "positions": [
+        {
+          "symbol": "ESGV",
+          "weight_pct": 40
+        },
+        {
+          "symbol": "XBB.TO",
+          "weight_pct": 30
+        },
+        {
+          "symbol": "FTS.TO",
+          "weight_pct": 15
+        },
+        {
+          "symbol": "GLD",
+          "weight_pct": 15
+        }
+      ],
+      "esg_evidence": [
+        {
+          "symbol": "ESGV",
+          "claim": "Vanguard présente ESGV comme un FNB indiciel d'actions américaines de sa gamme ESG et explique que certains de ses fonds indiciels ESG appliquent une stratégie d'exclusion.",
+          "publisher": "Vanguard",
+          "title": "Investing in ESG Funds: Reflect What Matters Most",
+          "url": "https://investor.vanguard.com/investment-products/esg",
+          "accessed_on": "2026-11-14"
+        },
+        {
+          "symbol": "ESGV",
+          "claim": "Les règles FTSE Global Choice décrivent des exclusions fondées sur des activités liées aux produits et à la conduite, avec des données ESG de FTSE Russell et de fournisseurs tiers; les constituants sont révisés trimestriellement.",
+          "publisher": "FTSE Russell (LSEG)",
+          "title": "FTSE Global Choice Index Series Ground Rules, v5.0",
+          "url": "https://www.lseg.com/content/dam/ftse-russell/en_us/documents/ground-rules/ftse-global-choice-index-series-ground-rules.pdf",
+          "published_on": "2026-08",
+          "accessed_on": "2026-11-14"
+        }
+      ],
+      "esg_evidence_limitations": "Le jeu de départ ne contient aucune cote ESG. Une stratégie d'exclusion ne prouve pas qu'un actif satisfait toutes les valeurs de Mateo; la méthodologie et les constituants peuvent changer et doivent être revérifiés à la date de l'analyse."
+    },
+    {
+      "persona_id": "robert",
+      "is_demonstration_hypothesis": true,
+      "construction_note": "Accorde 70 % aux obligations canadiennes, 15 % à l'or et limite l'exposition aux actions à 15 %.",
+      "positions": [
+        {
+          "symbol": "ZST.TO",
+          "weight_pct": 40
+        },
+        {
+          "symbol": "XBB.TO",
+          "weight_pct": 30
+        },
+        {
+          "symbol": "GLD",
+          "weight_pct": 15
+        },
+        {
+          "symbol": "XIU.TO",
+          "weight_pct": 15
+        }
+      ]
+    }
+  ]
+}
