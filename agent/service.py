@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import math
 import os
+import re
 from copy import deepcopy
+from numbers import Real
 from pathlib import Path
 from typing import Any
 
@@ -12,8 +15,14 @@ import boto3
 from botocore.config import Config
 
 from agent.context import RequestContext, create_request_context
-from agent.evidence import build_evidence_bundle, resolve_evidence_reference
-from agent.prompts import MODEL_EXPLANATION_FORMAT, SYSTEM_INSTRUCTIONS
+from agent.evidence import (
+    build_public_evidence_catalog,
+    build_evidence_bundle,
+    public_reference_category,
+    public_reference_unit,
+    resolve_evidence_reference,
+)
+from agent.prompts import CHANGE_TOPICS, MODEL_EXPLANATION_FORMAT, SYSTEM_INSTRUCTIONS
 from agent.tools import TOOL_SPECS, dispatch_tool
 from alphaforge.engine import EngineError, PROJECT_ROOT
 from scripts.aws_support import AWS_REGION, explain_aws_error
@@ -24,6 +33,52 @@ MAX_CONVERSE_CALLS = 8
 MAX_TOOL_EXECUTIONS = 12
 MAX_OUTPUT_TOKENS = 2048
 MAX_REPAIR_ATTEMPTS = 1
+
+_NUMBER_PATTERN = re.compile(
+    r"(?<![\w.])[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*(?:%|points?)?",
+    re.IGNORECASE,
+)
+_PROHIBITED_LANGUAGE = [
+    re.compile(r"\b(?:rendement|profit|gain)s?\s+garanti(?:e|s|es)?\b", re.I),
+    re.compile(
+        r"\bgaranti(?:t|ra|e|s|es)?\s+(?:un\s+)?(?:rendement|profit|gain)\b",
+        re.I,
+    ),
+    re.compile(r"\bsans\s+(?:aucun\s+)?risque\b", re.I),
+    re.compile(
+        r"\b(?:va|vont|devrait|doit)\s+(?:certainement\s+)?"
+        r"(?:monter|augmenter|rapporter|gagner)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:achetez|vendez|il faut acheter|je recommande d['’]acheter)\b",
+        re.I,
+    ),
+]
+
+
+class ExplanationValidationError(ValueError):
+    """Erreur publique et concise, sans contenu de conversation ni secret."""
+
+    def __init__(
+        self,
+        field: str,
+        rule: str,
+        references: list[str] | tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(rule)
+        self.field = field
+        self.rule = rule
+        self.references = list(dict.fromkeys(references))
+
+    def public_message(self, stage: str) -> str:
+        references = (
+            ", ".join(self.references) if self.references else "aucune"
+        )
+        return (
+            f"Validation de l'explication ({stage}) — champ: {self.field}; "
+            f"règle: {self.rule}; références: {references}."
+        )
 
 
 def _bedrock_client() -> Any:
@@ -122,6 +177,7 @@ def _ensure_local_results(
 
 def _initial_user_message(context: RequestContext) -> dict[str, Any]:
     request_json = json.dumps(context.request.as_dict(), ensure_ascii=False)
+    format_json = json.dumps(MODEL_EXPLANATION_FORMAT, ensure_ascii=False)
     return {
         "role": "user",
         "content": [
@@ -129,7 +185,8 @@ def _initial_user_message(context: RequestContext) -> dict[str, Any]:
                 "text": (
                     "Analyse cette demande AlphaForge en utilisant les deux outils "
                     f"dans l'ordre requis. Demande normalisée: {request_json}. "
-                    "Retourne ensuite uniquement le JSON structuré demandé."
+                    "Retourne ensuite uniquement le JSON structuré demandé. "
+                    f"Schéma JSON exact: {format_json}"
                 )
             }
         ],
@@ -211,8 +268,158 @@ def _parse_json_text(text: str) -> Any:
 
 def _validate_string_list(value: Any, path: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError(f"{path} doit être une liste de textes.")
+        raise ExplanationValidationError(path, "doit être une liste de textes")
+    if any(not item.strip() for item in value):
+        raise ExplanationValidationError(
+            path, "ne doit pas contenir de texte vide"
+        )
     return value
+
+
+def _validate_nonempty_text(value: Any, path: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ExplanationValidationError(path, "doit être un texte non vide")
+    return value
+
+
+def _reference_matches_topic(reference: str, topic: str) -> bool:
+    return public_reference_category(reference) == topic
+
+
+def _topic_mismatch_error(
+    field: str, reference: str, topic: str, context: RequestContext
+) -> ExplanationValidationError:
+    actual_category = public_reference_category(reference)
+    compatible = [
+        entry["reference"]
+        for entry in build_public_evidence_catalog(context)
+        if entry["category"] == topic
+    ]
+    available = ", ".join(compatible[:8]) or "aucune référence disponible"
+    return ExplanationValidationError(
+        field,
+        f"topic reçu {topic!r}; la référence incompatible {reference!r} est "
+        f"classée {actual_category!r}. Références compatibles disponibles pour "
+        f"{topic!r}: {available}. Réserver changes aux différences avant/après; "
+        "devise, période et méthode sont des métadonnées communes à placer dans "
+        "le résumé ou les incertitudes, sans changer arbitrairement le topic",
+        [reference, *compatible[:8]],
+    )
+
+
+def _missing_reference_error(
+    field: str, reference: str, context: RequestContext
+) -> ExplanationValidationError:
+    if reference.startswith("context.analysis."):
+        public_reference = reference.removeprefix("context.")
+        resolution = resolve_evidence_reference(context, public_reference)
+        if resolution["status"] == "resolved":
+            return ExplanationValidationError(
+                field,
+                f"utiliser le chemin public attendu {public_reference} au lieu "
+                f"du chemin interne interdit {reference}",
+                [public_reference],
+            )
+    if reference.startswith("context."):
+        return ExplanationValidationError(
+            field,
+            "les préfixes context.* sont internes et interdits; choisir une "
+            "référence analysis.* ou source.* du catalogue public",
+        )
+    return ExplanationValidationError(
+        field,
+        "la référence de preuve est introuvable dans le catalogue public",
+        [reference],
+    )
+
+
+def _validate_metric_citations(
+    value: Any,
+    *,
+    path: str,
+    evidence_refs: list[str],
+    context: RequestContext,
+    topic: str | None = None,
+) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ExplanationValidationError(path, "doit être une liste")
+    for index, citation in enumerate(value):
+        citation_path = f"{path}[{index}]"
+        if not isinstance(citation, dict) or set(citation) != {
+            "evidence_ref",
+            "value",
+            "unit",
+        }:
+            raise ExplanationValidationError(
+                citation_path,
+                "doit contenir exactement evidence_ref, value et unit",
+            )
+        reference = _validate_nonempty_text(
+            citation["evidence_ref"], f"{citation_path}.evidence_ref"
+        )
+        if not reference.startswith(("analysis.", "source.")):
+            raise _missing_reference_error(
+                f"{citation_path}.evidence_ref", reference, context
+            )
+        resolution = resolve_evidence_reference(context, reference)
+        if resolution["status"] != "resolved":
+            raise _missing_reference_error(
+                f"{citation_path}.evidence_ref", reference, context
+            )
+        if reference not in evidence_refs:
+            owner_path = path.removesuffix(".metrics")
+            raise ExplanationValidationError(
+                f"{citation_path}.evidence_ref",
+                f"ajouter la référence publique {reference} à "
+                f"{owner_path}.evidence_refs; metrics[].evidence_ref doit aussi "
+                "figurer dans evidence_refs du même constat",
+                [reference],
+            )
+        if topic is not None and not _reference_matches_topic(reference, topic):
+            raise _topic_mismatch_error(
+                f"{citation_path}.evidence_ref", reference, topic, context
+            )
+        real_value = resolution["value"]
+        stated_value = citation["value"]
+        if (
+            isinstance(real_value, bool)
+            or not isinstance(real_value, Real)
+            or isinstance(stated_value, bool)
+            or not isinstance(stated_value, Real)
+            or not math.isfinite(float(stated_value))
+        ):
+            raise ExplanationValidationError(
+                f"{citation_path}.value",
+                "doit référencer un nombre réel et fini",
+                [reference],
+            )
+        if not math.isclose(
+            float(stated_value), float(real_value), rel_tol=1e-12, abs_tol=1e-12
+        ):
+            raise ExplanationValidationError(
+                f"{citation_path}.value",
+                "ne correspond pas à la valeur structurée du moteur",
+                [reference],
+            )
+        expected_unit = public_reference_unit(reference, real_value)
+        if citation["unit"] != expected_unit:
+            raise ExplanationValidationError(
+                f"{citation_path}.unit",
+                f"doit être {expected_unit!r}",
+                [reference],
+            )
+    return value
+
+
+def _validate_model_language(texts: list[tuple[str, str]]) -> None:
+    for field, text in texts:
+        for pattern in _PROHIBITED_LANGUAGE:
+            if pattern.search(text):
+                raise ExplanationValidationError(
+                    field,
+                    "contient une promesse, une prédiction ou une recommandation "
+                    "catégorique interdite",
+                )
 
 
 def _validate_model_explanation(
@@ -220,72 +427,195 @@ def _validate_model_explanation(
 ) -> dict[str, Any]:
     """Valide la structure et les références, pas l'exactitude de toute la prose."""
     if not isinstance(value, dict):
-        raise ValueError("L'explication doit être un objet JSON.")
+        raise ExplanationValidationError("$", "doit être un objet JSON")
     allowed = set(MODEL_EXPLANATION_FORMAT["properties"])
     required = set(MODEL_EXPLANATION_FORMAT["required"])
     keys = set(value)
     if "tool_trace" in keys:
-        raise ValueError("Le modèle ne doit pas produire tool_trace.")
+        raise ExplanationValidationError(
+            "tool_trace", "doit être ajouté uniquement par l'application"
+        )
     if missing := required - keys:
-        raise ValueError("Champs obligatoires absents: " + ", ".join(sorted(missing)))
+        raise ExplanationValidationError(
+            "$", "champs obligatoires absents: " + ", ".join(sorted(missing))
+        )
     if unexpected := keys - allowed:
-        raise ValueError("Champs inattendus: " + ", ".join(sorted(unexpected)))
-    if not isinstance(value["summary"], str):
-        raise ValueError("summary doit être un texte.")
+        raise ExplanationValidationError(
+            "$", "champs inattendus: " + ", ".join(sorted(unexpected))
+        )
+    summary = _validate_nonempty_text(value["summary"], "summary")
+    if _NUMBER_PATTERN.search(summary):
+        raise ExplanationValidationError(
+            "summary",
+            "doit rester qualitatif; les chiffres appartiennent aux constats sourcés",
+        )
     if not isinstance(value["changes"], list):
-        raise ValueError("changes doit être une liste.")
+        raise ExplanationValidationError("changes", "doit être une liste")
     if not isinstance(value["profile_assessment"], list):
-        raise ValueError("profile_assessment doit être une liste.")
-    _validate_string_list(value["uncertainties"], "uncertainties")
+        raise ExplanationValidationError(
+            "profile_assessment", "doit être une liste"
+        )
+    uncertainties = _validate_string_list(value["uncertainties"], "uncertainties")
     all_references = list(
         _validate_string_list(value["evidence_refs"], "evidence_refs")
     )
 
+    model_texts = [("summary", summary)]
+    model_texts.extend(
+        (f"uncertainties[{index}]", text)
+        for index, text in enumerate(uncertainties)
+    )
     for index, change in enumerate(value["changes"]):
-        if not isinstance(change, dict) or set(change) != {"message", "evidence_refs"}:
-            raise ValueError(f"changes[{index}] ne respecte pas le format attendu.")
-        if not isinstance(change["message"], str):
-            raise ValueError(f"changes[{index}].message doit être un texte.")
-        all_references.extend(
-            _validate_string_list(
-                change["evidence_refs"], f"changes[{index}].evidence_refs"
+        expected_keys = {"topic", "message", "evidence_refs", "metrics"}
+        if not isinstance(change, dict) or set(change) != expected_keys:
+            raise ExplanationValidationError(
+                f"changes[{index}]",
+                "doit contenir exactement topic, message, evidence_refs et metrics",
             )
+        topic = change["topic"]
+        if topic not in CHANGE_TOPICS:
+            candidate_references = change.get("evidence_refs")
+            if (
+                topic in {"period", "methodology", "source", "currency"}
+                and isinstance(candidate_references, list)
+            ):
+                incompatible = next(
+                    (
+                        reference
+                        for reference in candidate_references
+                        if isinstance(reference, str)
+                        and public_reference_category(reference) != topic
+                    ),
+                    None,
+                )
+                if incompatible is not None:
+                    raise _topic_mismatch_error(
+                        f"changes[{index}].evidence_refs",
+                        incompatible,
+                        topic,
+                        context,
+                    )
+            raise ExplanationValidationError(
+                f"changes[{index}].topic",
+                "doit appartenir aux topics de changement autorisés: "
+                "performance, risk ou allocation; devise, période, méthode et "
+                "sources sont des métadonnées communes",
+            )
+        message = _validate_nonempty_text(
+            change["message"], f"changes[{index}].message"
         )
+        model_texts.append((f"changes[{index}].message", message))
+        references = _validate_string_list(
+            change["evidence_refs"], f"changes[{index}].evidence_refs"
+        )
+        if not references:
+            raise ExplanationValidationError(
+                f"changes[{index}].evidence_refs",
+                "doit référencer au moins une preuve",
+            )
+        for reference in references:
+            resolution = resolve_evidence_reference(context, reference)
+            if resolution["status"] != "resolved":
+                raise _missing_reference_error(
+                    f"changes[{index}].evidence_refs", reference, context
+                )
+            if not _reference_matches_topic(reference, topic):
+                raise _topic_mismatch_error(
+                    f"changes[{index}].evidence_refs", reference, topic, context
+                )
+        metrics = _validate_metric_citations(
+            change["metrics"],
+            path=f"changes[{index}].metrics",
+            evidence_refs=references,
+            context=context,
+            topic=topic,
+        )
+        if _NUMBER_PATTERN.search(message) and not metrics:
+            raise ExplanationValidationError(
+                f"changes[{index}].metrics",
+                "un message chiffré exige une métrique structurée",
+                references,
+            )
+        all_references.extend(references)
 
     real_checks = {check["id"]: check for check in context.checks or []}
     model_checks: dict[str, str] = {}
     for index, assessment in enumerate(value["profile_assessment"]):
-        expected_keys = {"check_id", "status", "message", "evidence_refs"}
+        expected_keys = {"check_id", "status", "message", "evidence_refs", "metrics"}
         if not isinstance(assessment, dict) or set(assessment) != expected_keys:
-            raise ValueError(
-                f"profile_assessment[{index}] ne respecte pas le format attendu."
+            raise ExplanationValidationError(
+                f"profile_assessment[{index}]",
+                "doit contenir exactement check_id, status, message, "
+                "evidence_refs et metrics",
             )
         check_id = assessment["check_id"]
         status = assessment["status"]
         if not isinstance(check_id, str) or not isinstance(status, str):
-            raise ValueError("check_id et status doivent être des textes.")
-        if not isinstance(assessment["message"], str):
-            raise ValueError("Le message d'un contrôle doit être un texte.")
-        if check_id in model_checks:
-            raise ValueError(f"Contrôle dupliqué dans l'explication: {check_id}")
-        model_checks[check_id] = status
-        all_references.extend(
-            _validate_string_list(
-                assessment["evidence_refs"],
-                f"profile_assessment[{index}].evidence_refs",
+            raise ExplanationValidationError(
+                f"profile_assessment[{index}]",
+                "check_id et status doivent être des textes",
             )
+        message = _validate_nonempty_text(
+            assessment["message"], f"profile_assessment[{index}].message"
         )
+        model_texts.append((f"profile_assessment[{index}].message", message))
+        if check_id in model_checks:
+            raise ExplanationValidationError(
+                f"profile_assessment[{index}].check_id",
+                "un contrôle ne peut apparaître qu'une fois",
+                list(real_checks.get(check_id, {}).get("evidence_refs", [])),
+            )
+        model_checks[check_id] = status
+        references = _validate_string_list(
+            assessment["evidence_refs"],
+            f"profile_assessment[{index}].evidence_refs",
+        )
+        real_check = real_checks.get(check_id)
+        if real_check is not None:
+            allowed_references = set(real_check.get("evidence_refs", []))
+            if not set(references).issubset(allowed_references):
+                raise ExplanationValidationError(
+                    f"profile_assessment[{index}].evidence_refs",
+                    f"les preuves doivent provenir du contrôle réel {check_id}",
+                    references,
+                )
+        metrics = _validate_metric_citations(
+            assessment["metrics"],
+            path=f"profile_assessment[{index}].metrics",
+            evidence_refs=references,
+            context=context,
+        )
+        if _NUMBER_PATTERN.search(message) and not metrics:
+            raise ExplanationValidationError(
+                f"profile_assessment[{index}].metrics",
+                "un message chiffré exige une métrique structurée",
+                references,
+            )
+        all_references.extend(references)
 
     expected_checks = {key: check["status"] for key, check in real_checks.items()}
     if model_checks != expected_checks:
-        raise ValueError(
-            "Les check_id ou statuts ne correspondent pas aux contrôles exécutés."
+        relevant_references = [
+            reference
+            for check in real_checks.values()
+            for reference in check.get("evidence_refs", [])
+        ]
+        raise ExplanationValidationError(
+            "profile_assessment",
+            "les check_id et statuts doivent correspondre exactement aux contrôles exécutés",
+            relevant_references,
         )
     for reference in dict.fromkeys(all_references):
         resolution = resolve_evidence_reference(context, reference)
         if resolution["status"] != "resolved":
-            raise ValueError(f"Référence de preuve introuvable: {reference}")
-    return deepcopy(value)
+            raise _missing_reference_error("evidence_refs", reference, context)
+    _validate_model_language(model_texts)
+    validated = deepcopy(value)
+    for assessment in validated["profile_assessment"]:
+        assessment["missing_information"] = deepcopy(
+            real_checks[assessment["check_id"]].get("missing_information", [])
+        )
+    return validated
 
 
 def _correction_message(context: RequestContext, reason: str) -> dict[str, Any]:
@@ -302,6 +632,17 @@ def _correction_message(context: RequestContext, reason: str) -> dict[str, Any]:
             }
         ],
     }
+
+
+def _validation_failure(exc: Exception) -> ExplanationValidationError:
+    if isinstance(exc, ExplanationValidationError):
+        return exc
+    if isinstance(exc, json.JSONDecodeError):
+        return ExplanationValidationError(
+            "$",
+            f"JSON invalide à la ligne {exc.lineno}, colonne {exc.colno}",
+        )
+    return ExplanationValidationError("$", str(exc))
 
 
 def analyze_request(
@@ -345,6 +686,7 @@ def analyze_request(
     messages = [_initial_user_message(context)]
     tool_executions = 0
     repair_attempts = 0
+    validation_failures: list[ExplanationValidationError] = []
 
     for _call_index in range(max_converse_calls):
         try:
@@ -405,12 +747,26 @@ def analyze_request(
                 _parse_json_text(text), context
             )
         except (json.JSONDecodeError, ValueError) as exc:
+            failure = _validation_failure(exc)
+            validation_failures.append(failure)
             if repair_attempts < MAX_REPAIR_ATTEMPTS:
                 repair_attempts += 1
-                messages.append(_correction_message(context, str(exc)))
+                messages.append(
+                    _correction_message(
+                        context, failure.public_message("premier rejet")
+                    )
+                )
                 continue
+            stages = ["premier rejet", "rejet après réparation"]
+            warnings.extend(
+                item.public_message(
+                    stages[index] if index < len(stages) else f"rejet {index + 1}"
+                )
+                for index, item in enumerate(validation_failures)
+            )
             warnings.append(
-                "L'explication Bedrock est restée invalide après une tentative de réparation."
+                "L'explication Bedrock est restée invalide après une tentative "
+                "de réparation; les calculs et contrôles sont conservés."
             )
             return _partial_response(context, warnings)
 

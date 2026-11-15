@@ -193,7 +193,8 @@ class AgentToolTests(unittest.TestCase):
         self.assertEqual(context.tool_trace[0]["arguments"], payload)
         self.assertNotIn("series", context.tool_trace[0]["result"])
         self.assertEqual(
-            context.tool_trace[0]["result"]["reference"], "context.analysis"
+            context.tool_trace[0]["result"]["internal_reference"],
+            "context.analysis",
         )
 
     def test_converse_schemas_and_prompt_contract(self):
@@ -214,6 +215,18 @@ class AgentToolTests(unittest.TestCase):
         self.assertNotIn("tool_trace", MODEL_EXPLANATION_FORMAT["properties"])
         self.assertIn("tool_trace", EXPLANATION_FORMAT["properties"])
         self.assertIn("tool_trace", EXPLANATION_FORMAT["required"])
+        change_schema = MODEL_EXPLANATION_FORMAT["properties"]["changes"]["items"]
+        self.assertIn("topic", change_schema["required"])
+        self.assertIn("metrics", change_schema["required"])
+        self.assertEqual(
+            change_schema["properties"]["evidence_refs"]["minItems"], 1
+        )
+        assessment_schema = EXPLANATION_FORMAT["properties"][
+            "profile_assessment"
+        ]["items"]
+        self.assertIn("missing_information", assessment_schema["required"])
+        self.assertIn("rendement", SYSTEM_INSTRUCTIONS)
+        self.assertIn("garantis", SYSTEM_INSTRUCTIONS)
 
 
 if __name__ == "__main__":

@@ -41,8 +41,11 @@ def _print_result(result: dict[str, Any]) -> None:
         print("Explication : indisponible")
         trace = result.get("tool_trace", [])
 
-    for warning in result.get("warnings", []):
-        print(f"Avertissement : {warning}")
+    warnings = result.get("warnings", [])
+    if warnings:
+        print("Avertissements et diagnostics :")
+        for warning in warnings:
+            print(f"- {warning}")
     if result.get("error"):
         print("Erreur : " + json.dumps(result["error"], ensure_ascii=False))
 

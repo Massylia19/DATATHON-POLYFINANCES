@@ -184,7 +184,7 @@ def simulate_portfolio_change(
         validated,
         "success",
         result={
-            "reference": "context.analysis",
+            "internal_reference": "context.analysis",
             "scenario": deepcopy(analysis["scenario"]),
             "period": deepcopy(analysis["period"]),
             "currency": analysis["currency"],
@@ -245,7 +245,7 @@ def check_profile(context: RequestContext, arguments: Any) -> dict[str, Any]:
         validated,
         "success",
         result={
-            "reference": "context.checks",
+            "internal_reference": "context.checks",
             "check_ids": [check["id"] for check in checks],
             "statuses": [check["status"] for check in checks],
         },

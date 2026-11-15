@@ -59,17 +59,65 @@ exploitables. Une erreur du moteur produit un état bloquant.
 `build_interface_payload(context)` conserve le résultat complet, y compris les
 séries. `build_evidence_bundle(context)` prépare les métriques, contrôles,
 sources et références nécessaires au modèle, en remplaçant les longues séries
-par un résumé et une référence au contexte.
+par un résumé qui ne publie aucun chemin interne.
+
+Le payload modèle distingue désormais strictement les identifiants internes des
+preuves publiques. Les valeurs `context.analysis` et `context.checks` servent
+uniquement aux traces applicatives sous `internal_reference`; elles ne sont
+jamais des `evidence_ref` valides. L'explication peut utiliser seulement les
+chemins `analysis.*` et `source.*` présents dans `public_evidence_catalog`.
+Chaque entrée du catalogue indique aussi sa `category`. Les constats de
+`changes` sont réservés aux différences avant/après de `performance`, `risk` ou
+`allocation`. `analysis.currency`, `analysis.period.*` et
+`analysis.methodology`/`analysis.limitations` sont respectivement des
+métadonnées `currency`, `period` et `methodology`; elles peuvent être résumées,
+mais ne justifient pas à elles seules un changement causé par l'actif ajouté.
+Chaque entrée du catalogue contient sa valeur résolue et son unité.
+
+Le même payload fournit `example_explanation`, construit avec les résultats
+réels de la demande. Son constat avant/après contient notamment les deux chemins
+`analysis.before.metrics.total_return` et
+`analysis.after.metrics.total_return`, dans `evidence_refs` comme dans les deux
+objets `metrics`. Une métrique ne peut donc pas citer une référence absente des
+preuves du même constat.
 
 Une référence inconnue reste marquée `missing`; aucune source n'est fabriquée.
 Les preuves ESG intégrées au dépôt sont reprises sans prétendre qu'elles ont été
 revérifiées sur Internet.
 
-Le service vérifie la structure JSON, les identifiants et statuts des contrôles,
-ainsi que l'existence des références. Il rejette une `tool_trace` rédigée par le
-modèle et ajoute celle du code. Cette validation ne prouve toutefois pas chaque
-formulation de la prose ni chaque chiffre qu'elle pourrait citer. Les nombres
-structurés du moteur restent la source de vérité pour l'interface.
+Le service exige des textes non vides, les vrais identifiants et statuts des
+contrôles, ainsi qu'au moins une preuve résolue et pertinente pour chaque
+constat de `changes`. Le champ `topic` (`performance`, `risk`, `allocation`,
+`period`, `methodology` ou `source`) limite les chemins de preuve acceptables.
+Les références d'une évaluation de profil doivent provenir du contrôle réel.
+
+Un chiffre placé dans un message exige une entrée structurée `metrics` :
+
+```json
+{
+  "evidence_ref": "analysis.after.metrics.total_return",
+  "value": 1.1862126991,
+  "unit": "decimal_ratio"
+}
+```
+
+Le service résout le chemin et compare la valeur brute et l'unité au résultat
+du moteur. Les informations manquantes de chaque contrôle sont réinjectées par
+l'application. Le modèle ne peut ni les effacer, ni fournir `tool_trace`.
+
+Un contrôle ciblé rejette les formulations manifestes de rendement garanti,
+d'absence de risque, de prédiction catégorique et d'ordre d'achat ou de vente.
+Il ne constitue pas une analyse sémantique exhaustive : une formulation
+ambiguë peut encore lui échapper, et la présence d'une citation structurée ne
+prouve pas que toute la phrase interprète correctement le chiffre. Les nombres
+du moteur et les contrôles déterministes restent les sources de vérité.
+
+Après une seule tentative de réparation, une explication toujours invalide
+produit `status="partial"`, conserve l'analyse et les contrôles, et laisse
+`explanation=null`. Les avertissements conservent séparément le premier rejet
+et le rejet après réparation, avec le champ, la règle et les références utiles.
+Ils n'incluent ni conversation complète, ni en-tête AWS, ni secret. La commande
+de démonstration les affiche sous `Avertissements et diagnostics`.
 
 ## Démonstration réelle
 

@@ -80,6 +80,160 @@ def resolve_evidence_reference(
     }
 
 
+def public_reference_unit(reference: str, value: Any) -> str:
+    """Retourne l'unité publique associée à une preuve déjà résolue."""
+    if reference.startswith("source."):
+        return "source_record"
+    if isinstance(value, (dict, list)):
+        if ".weights_by_" in reference:
+            return "percentage_map"
+        return "structured_data"
+    if ".metrics." in reference:
+        return "decimal_ratio"
+    if ".weights_by_" in reference or reference.endswith("target_weight_pct"):
+        return "percentage"
+    if reference.endswith("common_observations"):
+        return "count"
+    if reference.endswith((".start", ".end")) and "analysis.period." in reference:
+        return "iso_date"
+    if reference.endswith(".currency"):
+        return "currency_code"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "text"
+    return "structured_data"
+
+
+def public_reference_category(reference: str) -> str:
+    """Classe une preuve publique selon son usage sémantique autorisé."""
+    if reference == "analysis.currency":
+        return "currency"
+    if reference.startswith("analysis.period."):
+        return "period"
+    if reference.startswith(("analysis.methodology", "analysis.limitations")):
+        return "methodology"
+    if ".metrics.total_return" in reference:
+        return "performance"
+    if any(
+        fragment in reference
+        for fragment in (
+            ".metrics.annualized_volatility",
+            ".metrics.max_drawdown",
+        )
+    ):
+        return "risk"
+    if ".weights_by_" in reference or reference.startswith("analysis.scenario."):
+        return "allocation"
+    if reference.startswith("source."):
+        return "source"
+    return "metadata"
+
+
+def _public_reference_candidates(context: RequestContext) -> list[str]:
+    analysis = context.analysis or {}
+    references: list[str] = []
+    for section in ("before", "after", "delta_after_minus_before"):
+        section_value = analysis.get(section, {})
+        for group in ("metrics", "weights_by_asset_pct", "weights_by_class_pct"):
+            for key in section_value.get(group, {}):
+                references.append(f"analysis.{section}.{group}.{key}")
+    for key in analysis.get("scenario", {}):
+        references.append(f"analysis.scenario.{key}")
+    for key in analysis.get("period", {}):
+        references.append(f"analysis.period.{key}")
+    if "currency" in analysis:
+        references.append("analysis.currency")
+    for key in ("methodology", "limitations"):
+        if key in analysis:
+            references.append(f"analysis.{key}")
+    for check in context.checks or []:
+        references.extend(check.get("evidence_refs", []))
+    source_ids = _source_index(context)
+    references.extend(f"source.{source_id}" for source_id in source_ids)
+    return list(dict.fromkeys(references))
+
+
+def build_public_evidence_catalog(context: RequestContext) -> list[dict[str, Any]]:
+    """Catalogue concis des seules références publiques réellement résolues."""
+    catalog = []
+    for reference in _public_reference_candidates(context):
+        resolution = resolve_evidence_reference(context, reference)
+        if resolution["status"] != "resolved":
+            continue
+        value = resolution["value"]
+        catalog.append(
+            {
+                "reference": reference,
+                "value": deepcopy(value),
+                "unit": public_reference_unit(reference, value),
+                "category": public_reference_category(reference),
+            }
+        )
+    return catalog
+
+
+def _example_explanation(context: RequestContext) -> dict[str, Any] | None:
+    """Exemple valide construit avec les données réelles de la demande."""
+    if context.analysis is None or context.checks is None:
+        return None
+    before_ref = "analysis.before.metrics.total_return"
+    after_ref = "analysis.after.metrics.total_return"
+    before = resolve_evidence_reference(context, before_ref)
+    after = resolve_evidence_reference(context, after_ref)
+    if before["status"] != "resolved" or after["status"] != "resolved":
+        return None
+    missing = list(
+        dict.fromkeys(
+            item
+            for check in context.checks
+            for item in check.get("missing_information", [])
+        )
+    )
+    currency = context.analysis.get("currency", "CAD")
+    return {
+        "summary": (
+            f"Comparaison historique hypothétique en {currency}, sur la période "
+            "commune du moteur, avant et après le scénario."
+        ),
+        "changes": [
+            {
+                "topic": "performance",
+                "message": "Le rendement total historique est comparé avant et après.",
+                "evidence_refs": [before_ref, after_ref],
+                "metrics": [
+                    {
+                        "evidence_ref": before_ref,
+                        "value": before["value"],
+                        "unit": public_reference_unit(before_ref, before["value"]),
+                    },
+                    {
+                        "evidence_ref": after_ref,
+                        "value": after["value"],
+                        "unit": public_reference_unit(after_ref, after["value"]),
+                    },
+                ],
+            }
+        ],
+        "profile_assessment": [
+            {
+                "check_id": check["id"],
+                "status": check["status"],
+                "message": "Ce statut provient du contrôle déterministe exécuté.",
+                "evidence_refs": deepcopy(check.get("evidence_refs", [])),
+                "metrics": [],
+            }
+            for check in context.checks
+        ],
+        "uncertainties": [
+            f"Information manquante: {item}." for item in missing
+        ],
+        "evidence_refs": [before_ref, after_ref],
+    }
+
+
 def build_evidence_bundle(context: RequestContext) -> dict[str, Any]:
     """Prépare le contexte concis destiné au modèle, sans longues séries."""
     analysis = deepcopy(context.analysis)
@@ -92,7 +246,6 @@ def build_evidence_bundle(context: RequestContext) -> dict[str, Any]:
         series_summary = None
         if series and series.get("dates"):
             series_summary = {
-                "reference": "context.analysis.series",
                 "observations": len(series["dates"]),
                 "start": series["dates"][0],
                 "end": series["dates"][-1],
@@ -121,6 +274,25 @@ def build_evidence_bundle(context: RequestContext) -> dict[str, Any]:
         "analysis": analysis_for_model,
         "series_summary": series_summary,
         "checks": deepcopy(context.checks),
+        "public_reference_policy": {
+            "allowed_prefixes": ["analysis.", "source."],
+            "forbidden_prefixes": ["context."],
+            "metric_membership_rule": (
+                "Chaque metrics[].evidence_ref doit aussi figurer dans "
+                "evidence_refs du même constat."
+            ),
+            "changes_purpose": (
+                "Réserver changes aux différences avant/après de performance, "
+                "risque ou allocation."
+            ),
+            "metadata_usage": (
+                "La devise, la période et la méthode sont des métadonnées "
+                "communes à mentionner dans le résumé ou les incertitudes; elles "
+                "ne constituent pas un changement causé par l'actif ajouté."
+            ),
+        },
+        "public_evidence_catalog": build_public_evidence_catalog(context),
+        "example_explanation": _example_explanation(context),
         "resolved_evidence": resolved,
         "referenced_esg_sources": [
             source_index[source_id]
