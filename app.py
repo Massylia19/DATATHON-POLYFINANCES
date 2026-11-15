@@ -149,7 +149,8 @@ def render_explanation(explanation: dict, request: dict, response: dict) -> None
     for change in explanation.get("changes", []):
         st.markdown(f"**Changement — {change['topic']}**")
         st.write(change["message"])
-        render_evidence_references(change.get("evidence_refs", []), request, response)
+        render_evidence_references(change.get(
+            "evidence_refs", []), request, response)
     if explanation.get("profile_assessment"):
         st.markdown("**Évaluation selon le profil**")
     for assessment in explanation.get("profile_assessment", []):
@@ -208,7 +209,8 @@ def render_analysis(analysis: dict) -> None:
     st.subheader("Pondérations avant et après")
     rows = []
     for symbol in sorted(
-        set(before["weights_by_asset_pct"]) | set(after["weights_by_asset_pct"])
+        set(before["weights_by_asset_pct"]) | set(
+            after["weights_by_asset_pct"])
     ):
         old = before["weights_by_asset_pct"].get(symbol, 0.0)
         new = after["weights_by_asset_pct"].get(symbol, 0.0)
@@ -250,10 +252,112 @@ def render_methodology(analysis: dict) -> None:
                 f"(extrait le {retrieved})"
             )
             url = source.get("source_url")
-            st.markdown(f"- [{label}]({url})" if url and url != "n/a" else f"- {label}")
+            st.markdown(f"- [{label}]({url})" if url and url !=
+                        "n/a" else f"- {label}")
             if source.get("limitations"):
                 st.caption(source["limitations"])
         st.markdown("**Limites de l’analyse**")
+        for limitation in analysis.get("limitations", []):
+            st.markdown(f"- {limitation}")
+
+
+def render_reasoning(analysis: dict) -> None:
+    """Présente les bases et limites des résultats calculés par le moteur."""
+    method = analysis.get("methodology", {})
+    period = analysis.get("period", {})
+    scenario = analysis.get("scenario", {})
+    before = analysis.get("before", {})
+    after = analysis.get("after", {})
+    deltas = analysis.get("delta_after_minus_before", {})
+    before_metrics = before.get("metrics", {})
+    after_metrics = after.get("metrics", {})
+    metric_deltas = deltas.get("metrics", {})
+    weights_before = before.get("weights_by_asset_pct", {})
+    weights_after = after.get("weights_by_asset_pct", {})
+    symbol = scenario.get("added_symbol", "l’actif sélectionné")
+    target = scenario.get("target_weight_pct")
+
+    with st.expander("Comment AlphaForge arrive à cette analyse", expanded=False):
+        st.write(
+            "Cette explication décrit les calculs déterministes du moteur. "
+            "Elle s’appuie sur les résultats affichés et ne prétend pas révéler "
+            "un raisonnement interne caché du modèle d’IA."
+        )
+        st.markdown("**Démarche**")
+        st.markdown(
+            "1. Le moteur sélectionne les prix ajustés des actifs du portefeuille "
+            "initial et du scénario.\n"
+            "2. Il convertit en CAD les prix libellés en USD avec le taux USD/CAD, "
+            "puis retient les dates communes aux actifs.\n"
+            "3. Il simule un portefeuille acheter-conserver avant et après le "
+            "changement, puis compare rendement total, volatilité annualisée, "
+            "recul maximal et pondérations."
+        )
+        st.markdown("**Données utilisées**")
+        st.write(
+            f"Période commune : {period.get('start', 'inconnue')} au "
+            f"{period.get('end', 'inconnue')} ({period.get('common_observations', 'nombre inconnu')} observations), en {analysis.get('currency', 'devise inconnue')}."
+        )
+        st.write(
+            "Les entrées de marché sont les prix ajustés et les taux de change "
+            "décrits dans les sources de l’analyse. Les portefeuilles et personas "
+            "sont des données fictives de démonstration."
+        )
+        sources = analysis.get("sources", [])
+        if sources:
+            st.caption(
+                "Sources présentes dans cette analyse : "
+                + "; ".join(
+                    source.get("file", source.get("id", "source"))
+                    for source in sources
+                )
+            )
+        st.markdown("**Facteurs qui influencent les résultats**")
+        if target is not None:
+            st.write(
+                f"Le scénario attribue {target:g} % à {symbol}; le financement "
+                "provient d’une réduction proportionnelle des positions initiales."
+            )
+        old, new = weights_before.get(
+            symbol, 0.0), weights_after.get(symbol, 0.0)
+        st.write(
+            f"La pondération de {symbol} passe de {old:.1f} % à {new:.1f} %. "
+            "Les résultats dépendent aussi de la période retenue, des actifs "
+            "présents et de l’alignement des dates."
+        )
+        metric_names = {
+            "total_return": "Rendement total",
+            "annualized_volatility": "Volatilité annualisée",
+            "max_drawdown": "Recul maximal",
+        }
+        for key, label in metric_names.items():
+            if key not in before_metrics or key not in after_metrics:
+                continue
+            delta = metric_deltas.get(key)
+            if delta is None:
+                continue
+            direction = "augmente" if delta > 0 else "diminue" if delta < 0 else "ne change pas"
+            st.write(
+                f"{label} : {direction} de {format_points(delta)} "
+                f"({format_pct(before_metrics[key])} avant, "
+                f"{format_pct(after_metrics[key])} après)."
+            )
+        st.caption(
+            "Ces écarts décrivent la comparaison calculée; ils n’isolent pas "
+            "l’effet causal d’un seul actif et ne permettent pas d’attribuer "
+            "les variations à un facteur de marché particulier."
+        )
+        for key in ("price_field", "fx_conversion", "calendar_alignment", "simulation", "volatility", "max_drawdown", "costs"):
+            if method.get(key):
+                st.caption(
+                    f"{key.replace('_', ' ').capitalize()} : {method[key]}")
+        st.markdown("**Limites des conclusions**")
+        st.write(
+            "Cette simulation historique hypothétique ne prédit pas les rendements "
+            "futurs et ne constitue pas une recommandation. Les hypothèses de "
+            "données, les frais exclus et les limites propres aux indicateurs "
+            "peuvent changer l’interprétation."
+        )
         for limitation in analysis.get("limitations", []):
             st.markdown(f"- {limitation}")
 
@@ -266,7 +370,8 @@ def render_tool_trace(response: dict) -> None:
         return
     with st.expander("Traces factuelles des outils"):
         for entry in trace:
-            st.markdown(f"**{entry.get('tool', 'outil')} — {entry.get('status', 'inconnu')}**")
+            st.markdown(
+                f"**{entry.get('tool', 'outil')} — {entry.get('status', 'inconnu')}**")
             st.write("Arguments validés :", entry.get("arguments", {}))
             st.caption(
                 "Origine d’exécution : "
@@ -378,7 +483,8 @@ with st.form("custom_scenario_form"):
     submitted = st.form_submit_button("Analyser le changement", type="primary")
 
 if submitted:
-    analyzed_request = request_key(persona["id"], selected_symbol, target_weight)
+    analyzed_request = request_key(
+        persona["id"], selected_symbol, target_weight)
     try:
         with st.spinner("Analyse du changement avec AWS Bedrock…"):
             response = analyze_request(
@@ -433,6 +539,7 @@ if stored_request and response:
             st.warning(warning)
         if analysis:
             render_analysis(analysis)
+            render_reasoning(analysis)
         render_checks(checks, stored_request, response)
         explanation = response.get("explanation")
         if explanation:

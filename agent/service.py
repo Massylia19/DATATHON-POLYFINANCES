@@ -6,13 +6,20 @@ import json
 import math
 import os
 import re
+from importlib import import_module
 from copy import deepcopy
 from numbers import Real
 from pathlib import Path
 from typing import Any
 
-import boto3
-from botocore.config import Config
+try:
+    _boto3: Any = import_module("boto3")
+    _botocore_config: Any = import_module("botocore.config")
+except ModuleNotFoundError as exc:  # Le moteur local reste utilisable sans AWS.
+    if exc.name not in {"boto3", "botocore"}:
+        raise
+    _boto3 = None
+    _botocore_config = None
 
 from agent.context import RequestContext, create_request_context
 from agent.evidence import (
@@ -82,12 +89,16 @@ class ExplanationValidationError(ValueError):
 
 
 def _bedrock_client() -> Any:
-    config = Config(
+    if _boto3 is None or _botocore_config is None:
+        raise RuntimeError(
+            "boto3 n'est pas installé; l'explication AWS est indisponible."
+        )
+    config = _botocore_config.Config(
         connect_timeout=5,
         read_timeout=60,
         retries={"max_attempts": 3, "mode": "standard"},
     )
-    return boto3.client("bedrock-runtime", region_name=AWS_REGION, config=config)
+    return _boto3.client("bedrock-runtime", region_name=AWS_REGION, config=config)
 
 
 def _error_response(code: str, message: str) -> dict[str, Any]:
@@ -670,7 +681,10 @@ def analyze_request(
     selected_model = model_id or os.environ.get(MODEL_ID_ENV)
     if not selected_model:
         warnings.append(
-            "BEDROCK_MODEL_ID est absent; aucune explication AWS n'a été produite."
+            "BEDROCK_MODEL_ID est absent; aucune explication AWS n'a été produite. "
+            "Dans le même PowerShell que Streamlit, définissez "
+            "$env:BEDROCK_MODEL_ID = \"us.anthropic.claude-opus-5-5\" puis "
+            "relancez l'application (voir docs/aws_bedrock_diagnostic.md)."
         )
         blocking = _ensure_local_results(context, warnings)
         return blocking or _partial_response(context, warnings)
