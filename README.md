@@ -231,6 +231,8 @@ Diagnostic de l'accès AWS : voir [docs/aws_bedrock_diagnostic.md](docs/aws_bedr
 
 L'interface Streamlit (`app.py`, styles dans `styles/style.css`) permet de simuler l'ajout d'un actif au portefeuille fictif d'un persona et de lire les résultats sans passer par la ligne de commande. Elle appelle `agent.service.analyze_request`, qui orchestre le moteur, les contrôles du profil et l'explication Bedrock validée.
 
+Les profils et portefeuilles fournis dans le dépôt sont des données de démonstration; les prix historiques proviennent des fichiers de marché du projet. À la soumission du formulaire, l'interface appelle le véritable service AlphaForge. Celui-ci utilise Bedrock Converse si `BEDROCK_MODEL_ID` et les identifiants AWS sont configurés. Les réponses simulées sont réservées aux tests; elles ne sont pas utilisées par l'application.
+
 ### Lancement
 
 Depuis la racine du dépôt, avec l'environnement virtuel activé (voir [Installation](#installation)) :
@@ -262,34 +264,32 @@ Streamlit affiche l'adresse de l'application dans le terminal, par défaut <http
 
 ### Parcours utilisateur
 
-1. **Choisir le thème (facultatif).** Le sélecteur en haut de la page permet de passer de l'affichage Clair à l'affichage Sombre.
+1. **Choisir le thème (facultatif).** Le sélecteur dans la barre latérale permet de passer de l'affichage Clair à l'affichage Sombre.
 
-2. **Choisir un persona.** Dans la liste « Choisissez un persona », sélectionner Amira, Mateo ou Robert. La page affiche son objectif, son horizon de placement, ses préférences, les informations inconnues à son sujet et son portefeuille fictif initial (actifs et pondérations).
+2. **Choisir un persona.** Utiliser le sélecteur du bandeau supérieur pour choisir Amira, Mateo ou Robert. La barre latérale rappelle son objectif, son horizon et donne accès au portefeuille fictif initial.
 
 3. **Ajouter un actif.** Dans le formulaire :
-   - « Actif à ajouter » : choisir un actif de `data/market/assets_universe.csv` que le persona ne détient pas déjà. Un actif est proposé par défaut, selon le scénario de référence de `data/scenarios.json`;
+   - « Actif » : choisir un actif de `data/market/assets_universe.csv` que le persona ne détient pas déjà. Un actif est proposé par défaut, selon le scénario de référence de `data/scenarios.json`;
    - « Poids cible (%) » : régler le poids de l'actif ajouté, de 1 % à 50 % par pas de 0,5 %. Ce poids est financé par une réduction proportionnelle des positions existantes.
 
-4. **Lancer l'analyse.** Cliquer sur « Analyser le changement ». Un seul appel au service orchestre la simulation historique, les contrôles et l'explication Bedrock.
+4. **Lancer l'analyse.** Cliquer sur « Analyser le scénario ». Un seul appel au service orchestre la simulation historique, les contrôles et l'explication Bedrock.
 
-5. **Lire les résultats**, dans l'ordre où ils apparaissent :
-   - **Votre simulation** : actif, poids, profil, financement proportionnel, dates et devise;
-   - **Ce qu'il faut retenir** : synthèse accessible des conséquences, compromis et limites importantes;
-   - **Ce qui change** : rendement sur la période, variations du portefeuille et plus forte baisse historique, avec définitions et comparaison Avant / Après / Écart;
-   - **Pondérations avant et après** : poids de chaque actif et variation en points;
-   - **Évolution historique (base 100)** : courbes du portefeuille initial et du portefeuille après scénario, normalisées à 100 à la première date commune;
-   - **Par rapport aux priorités du profil** : constats réels présentés comme cohérence sur un point, point de vigilance ou informations insuffisantes;
-   - **Ce qu'il reste à savoir** : informations manquantes et incertitudes en français courant;
-   - **Détails repliables** : définitions, preuves, sources, méthode et traces techniques.
+5. **Lire le tableau de bord**, organisé comme la maquette AlphaForge :
+   - **Votre simulation** : nom complet de l'actif, poids ajouté, réduction proportionnelle des autres placements, dates en français et montants en dollars canadiens;
+   - les trois **comparaisons avant/après** et la **courbe historique** dans la zone principale;
+   - **L'éclairage de l'agent** : compromis relié au profil, constats et informations manquantes;
+   - **Ce qui change** : accès aux pondérations détaillées;
+   - **Comprendre le calcul** et **Consulter les sources** : sections repliées;
+   - **Mode technique** (désactivé par défaut) : preuves, valeurs brutes, contrôles individuels, données et traces destinés à l'équipe et au jury.
 
 6. **Explorer d'autres scénarios.** Modifier l'actif ou le poids, ou changer de persona, puis relancer explicitement l'analyse. Le dernier résultat reste en session lors d'un changement de thème ou d'un rerun et aucun nouvel appel AWS n'est effectué sans soumission. Si le formulaire diffère de la demande conservée, l'interface le signale.
 
 ### Ce que l'interface affiche et ne fait pas
 
-- En état `success`, l'explication affichée provient de Bedrock et a passé les validations de références, de contrôles et de structure de l'application.
-- En état `partial`, les calculs et contrôles disponibles restent affichés, avec les avertissements, mais aucune explication locale n'est présentée comme une réponse de Claude.
-- En état `error`, le code et le message d'erreur sont affichés sans transformer un ancien résultat en nouvelle réussite.
-- Tous les chiffres proviennent du moteur de simulation. L'interface ne fait que les mettre en forme.
+- En état `success`, la synthèse qualitative de Bedrock n'est affichée que si elle ne contient ni décimales brutes ni identifiants internes; les comparaisons chiffrées proviennent des métriques validées du moteur.
+- En état `partial`, les calculs et contrôles disponibles restent affichés avec un résumé qualitatif dérivé des résultats structurés; aucune réponse locale n'est présentée comme une réponse de Claude.
+- En état `error`, le rapport affiche une explication accessible; le code et les détails ne sont accessibles qu'en mode technique.
+- Les chiffres proviennent du moteur de simulation. L'interface ne fait que les mettre en forme.
 - Les résultats décrivent une période historique simulée; ils ne préjugent pas des résultats futurs. Aucune transaction n'est exécutée.
 
 ### Thèmes

@@ -228,7 +228,8 @@ class AgentToolTests(unittest.TestCase):
         self.assertIn("rendement", SYSTEM_INSTRUCTIONS)
         self.assertIn("garantis", SYSTEM_INSTRUCTIONS)
         self.assertIn("phrases courtes", SYSTEM_INSTRUCTIONS)
-        self.assertIn("deux à quatre phrases", SYSTEM_INSTRUCTIONS)
+        self.assertIn("deux ou trois phrases", SYSTEM_INSTRUCTIONS)
+        self.assertIn("n'affiche jamais de clé informatique", SYSTEM_INSTRUCTIONS)
         self.assertIn("ni emoji", SYSTEM_INSTRUCTIONS)
         self.assertIn("améliore automatiquement", SYSTEM_INSTRUCTIONS)
 

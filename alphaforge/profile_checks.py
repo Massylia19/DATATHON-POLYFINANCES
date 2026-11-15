@@ -152,6 +152,7 @@ def validate_profile(
                     "topic": item.get("topic"),
                     "claim": item.get("claim"),
                     "publisher": item.get("publisher"),
+                    "title": item.get("title"),
                     "url": item.get("url"),
                     "date": evidence_date,
                     "date_type": (

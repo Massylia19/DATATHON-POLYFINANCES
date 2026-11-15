@@ -13,18 +13,20 @@ try:
     from agent.service import analyze_request
     from alphaforge.engine import load_asset_universe
     from alphaforge.presentation import (
-        ASSET_CLASS_LABELS,
         CHECK_TITLE_LABELS,
         METRIC_PRESENTATION,
-        MISSING_INFORMATION_LABELS,
+        SOURCE_PRESENTATION,
         STATUS_LABELS,
-        TOPIC_LABELS,
+        build_main_summary,
         describe_metric_change,
-        evidence_value_for_display,
-        format_points,
+        format_date_fr,
         format_rate,
         format_weight,
         format_weight_delta,
+        has_unsafe_main_narrative,
+        join_french_list,
+        missing_information_phrases,
+        persona_possessive,
         readable_label,
     )
 
@@ -112,274 +114,322 @@ def render_evidence_references(
                 st.warning(resolved.get("reason", "Référence introuvable."))
 
 
-def translated_missing(items: list[str]) -> list[str]:
-    return [readable_label(item, MISSING_INFORMATION_LABELS) for item in items]
-
-
-def structured_metric_label(reference: str) -> str:
-    metric_key = reference.rsplit(".", 1)[-1]
-    metric = METRIC_PRESENTATION.get(metric_key, {})
-    title = metric.get("title", readable_label(metric_key, {}))
-    if ".before." in reference:
-        return f"Avant — {title}"
-    if ".after." in reference:
-        return f"Après — {title}"
-    if ".delta_after_minus_before." in reference:
-        return f"Écart — {title}"
-    return title
-
-
-def render_structured_metrics(metrics: list[dict]) -> None:
-    for metric in metrics:
-        st.caption(
-            f"{structured_metric_label(metric['evidence_ref'])} : "
-            f"{evidence_value_for_display(metric['evidence_ref'], metric['value'], metric['unit'])}"
-        )
-
-
 def render_simulation(analysis: dict, asset: dict) -> None:
     persona = analysis["persona"]
     scenario = analysis["scenario"]
+    asset_name = asset.get("name", "cet actif")
     st.subheader("Votre simulation")
     st.write(
-        f"Vous consacrez **{format_weight(scenario['target_weight_pct'])}** du "
-        f"portefeuille de **{persona.get('name', persona['id'].title())}** à "
-        f"**{asset.get('name', scenario['added_symbol'])}** "
-        f"({scenario['added_symbol']})."
+        f"Vous ajoutez **{asset_name}** à hauteur de "
+        f"**{format_weight(scenario['target_weight_pct'])}** du portefeuille "
+        f"{persona_possessive(persona.get('name', ''))}."
     )
-    st.write(
-        "Les autres positions diminuent proportionnellement pour financer cet ajout."
+    st.write("Les autres placements diminuent proportionnellement.")
+    currency = (
+        "dollars canadiens"
+        if analysis.get("currency") == "CAD"
+        else readable_label(analysis.get("currency", ""), {})
     )
     st.caption(
-        f"Comparaison historique du {analysis['period']['start']} au "
-        f"{analysis['period']['end']} · {analysis['period']['common_observations']:,} "
-        f"dates communes · valeurs exprimées en {analysis['currency']}"
+        f"Du {format_date_fr(analysis['period']['start'])} au "
+        f"{format_date_fr(analysis['period']['end'])} · Montants en {currency}."
     )
 
 
-def render_summary(explanation: dict | None) -> None:
-    st.subheader("Ce qu’il faut retenir")
-    if explanation:
-        st.write(explanation["summary"])
-        st.caption(
-            "Cette explication a été produite par Bedrock. L’application contrôle "
-            "sa structure, ses valeurs chiffrées et ses références; elle ne certifie "
-            "pas chaque nuance du texte."
+def render_summary(
+    analysis: dict, asset_name: str, explanation: dict | None
+) -> None:
+    st.subheader("En quelques mots")
+    st.write(
+        build_main_summary(
+            analysis,
+            analysis["persona"],
+            asset_name,
+            explanation,
         )
-    else:
-        st.info(
-            "Les calculs sont disponibles, mais l’explication automatique n’a pas "
-            "pu être produite."
-        )
+    )
 
 
-def render_analysis(analysis: dict, explanation: dict | None) -> None:
-    st.subheader("Ce qui change")
+def render_analysis(analysis: dict) -> None:
+    st.subheader("Comparaisons avant/après")
     before, after = analysis["before"], analysis["after"]
     metric_deltas = analysis["delta_after_minus_before"]["metrics"]
     for column, key in zip(st.columns(3), METRIC_PRESENTATION):
         presentation = METRIC_PRESENTATION[key]
         column.metric(
             presentation["title"],
-            format_rate(after["metrics"][key]),
-            delta=format_points(metric_deltas[key]),
-            delta_color="inverse" if key == "annualized_volatility" else "normal",
-            help=f"{presentation['technical']} — {presentation['definition']}",
+            f"{format_rate(before['metrics'][key])} avant / "
+            f"{format_rate(after['metrics'][key])} après",
+            help=presentation["definition"],
         )
         column.caption(describe_metric_change(key, metric_deltas[key]))
-    if explanation:
-        for change in explanation.get("changes", []):
-            st.markdown(
-                f"**{readable_label(change['topic'], TOPIC_LABELS)}** — "
-                f"{change['message']}"
+
+
+def render_weight_details(
+    analysis: dict, assets: dict[str, dict]
+) -> None:
+    with st.expander("Pondérations détaillées"):
+        before, after = analysis["before"], analysis["after"]
+        rows = []
+        for symbol in sorted(
+            set(before["weights_by_asset_pct"])
+            | set(after["weights_by_asset_pct"])
+        ):
+            asset_name = assets.get(symbol, {}).get("name", "Autre placement")
+            old = before["weights_by_asset_pct"].get(symbol, 0.0)
+            new = after["weights_by_asset_pct"].get(symbol, 0.0)
+            rows.append(
+                {
+                    "Placement": asset_name,
+                    "Avant": format_weight(old),
+                    "Après": format_weight(new),
+                    "Écart": format_weight_delta(new - old),
+                }
             )
-            render_structured_metrics(change.get("metrics", []))
-    st.dataframe(
-        [
-            {
-                "Indicateur": presentation["title"],
-                "Avant": format_rate(before["metrics"][key]),
-                "Après": format_rate(after["metrics"][key]),
-                "Écart": format_points(metric_deltas[key]),
-            }
-            for key, presentation in METRIC_PRESENTATION.items()
-        ],
-        hide_index=True,
-        width="stretch",
-    )
-    st.subheader("Pondérations avant et après")
-    rows = []
-    for symbol in sorted(
-        set(before["weights_by_asset_pct"]) | set(after["weights_by_asset_pct"])
-    ):
-        old = before["weights_by_asset_pct"].get(symbol, 0.0)
-        new = after["weights_by_asset_pct"].get(symbol, 0.0)
-        rows.append(
-            {
-                "Actif": symbol,
-                "Avant": format_weight(old),
-                "Après": format_weight(new),
-                "Écart": format_weight_delta(new - old),
-            }
-        )
-    st.dataframe(rows, hide_index=True, width="stretch")
-    st.subheader("Évolution historique (base 100)")
+        st.dataframe(rows, hide_index=True, width="stretch")
+
+
+def render_chart(analysis: dict, asset_name: str) -> None:
+    st.subheader("Évolution historique")
     series = analysis.get("series")
     if series:
         st.line_chart(
             {
                 "Date": series["dates"],
                 "Portefeuille initial": series["before"],
-                "Après scénario": series["after"],
+                f"Portefeuille avec {asset_name}": series["after"],
             },
             x="Date",
-            y=["Portefeuille initial", "Après scénario"],
+            y=["Portefeuille initial", f"Portefeuille avec {asset_name}"],
+        )
+        st.caption(
+            "Les deux courbes partent de la même base et illustrent leur "
+            "évolution relative."
         )
     else:
-        st.warning("Les séries temporelles sont absentes; courbe indisponible.")
+        st.warning("La courbe n’est pas disponible pour ce scénario.")
+
+
+def fund_composition_is_unknown(checks: list[dict]) -> bool:
+    check_by_id = {check["id"]: check for check in checks}
+    grouped_ids = {"concentration", "diversification", "etf_overlap"}
+    grouped_checks = [check_by_id[key] for key in grouped_ids if key in check_by_id]
+    return (
+        len(grouped_checks) == len(grouped_ids)
+        and all(
+            item["status"] == "insufficient_information"
+            and {"etf_holdings", "sector_exposures"}
+            .intersection(item.get("missing_information", []))
+            for item in grouped_checks
+        )
+    )
 
 
 def render_priorities(
-    persona_name: str, checks: list[dict], explanation: dict | None
+    persona: dict,
+    checks: list[dict],
+    explanation: dict | None,
+    asset_name: str,
 ) -> None:
-    st.subheader(f"Par rapport aux priorités de {persona_name}")
-    assessments = {
+    st.subheader("Ce que cela signifie pour le profil")
+    assessment_by_id = {
         item["check_id"]: item
         for item in (explanation or {}).get("profile_assessment", [])
     }
-    if any("ESG" in check.get("title", "") for check in checks):
-        st.caption("ESG signifie critères environnementaux, sociaux et de gouvernance.")
-    if any("FNB" in (check.get("message", "") + check.get("title", "")) for check in checks):
-        st.caption(
-            "Un FNB est un fonds négocié en Bourse, qui regroupe plusieurs placements."
+
+    grouped_ids = {"concentration", "diversification", "etf_overlap"}
+    findings_shown = 0
+    displayed_findings: set[str] = set()
+
+    def show_finding(message: str) -> None:
+        nonlocal findings_shown
+        if findings_shown < 3 and message not in displayed_findings:
+            st.markdown(message)
+            displayed_findings.add(message)
+            findings_shown += 1
+
+    if fund_composition_is_unknown(checks):
+        show_finding(
+            f"Nous ne savons pas quelle part de {asset_name} est déjà détenue "
+            "à travers les fonds du portefeuille."
         )
+        handled_ids = grouped_ids
+    else:
+        handled_ids = set()
+
     for check in checks:
-        status = readable_label(check["status"], STATUS_LABELS)
-        title = readable_label(check["id"], CHECK_TITLE_LABELS)
-        assessment = assessments.get(check["id"])
-        message = assessment["message"] if assessment else check["message"]
-        content = f"**{status} — {title}**  \n{message}"
-        if check["status"] == "tension":
-            st.warning(content)
-        elif check["status"] == "consistent":
-            st.success(content)
-        else:
-            st.info(content)
-        if assessment:
-            render_structured_metrics(assessment.get("metrics", []))
+        if check["id"] in handled_ids:
+            continue
+        status = check["status"]
+        if status == "insufficient_information":
+            continue
+
+        model_message = assessment_by_id.get(check["id"], {}).get("message")
+        if not has_unsafe_main_narrative(model_message):
+            show_finding(model_message)
+        elif status == "tension":
+            objective = persona.get("objective", "ce profil")
+            objective = objective[:1].lower() + objective[1:]
+            show_finding(
+                f"Le contrôle signale un point à examiner au regard de "
+                f"l’objectif de {objective} "
+                f"{persona_possessive(persona['name'])}."
+            )
 
 
-def render_remaining(
-    analysis: dict, checks: list[dict], explanation: dict | None
-) -> None:
-    st.subheader("Ce qu’il reste à savoir")
-    missing = list(
-        dict.fromkeys(
+def render_remaining(persona: dict, checks: list[dict]) -> None:
+    st.subheader("Les informations qui manquent")
+    missing = list(persona.get("missing_information", []))
+    for check in checks:
+        missing.extend(check.get("missing_information", []))
+    if fund_composition_is_unknown(checks):
+        missing = [
             item
-            for check in checks
-            for item in check.get("missing_information", [])
-        )
-    )
-    for item in translated_missing(missing):
-        st.markdown(f"- {item}")
-    for uncertainty in (explanation or {}).get("uncertainties", []):
-        st.markdown(f"- {uncertainty}")
-    if not missing and not (explanation or {}).get("uncertainties"):
+            for item in missing
+            if item not in {"etf_holdings", "sector_exposures"}
+        ]
+    phrases = missing_information_phrases(missing, persona["name"])
+    if phrases:
+        st.write(f"Nous ne connaissons pas encore : {join_french_list(phrases)}.")
+    else:
         st.write("Aucune information manquante supplémentaire n’est signalée.")
 
 
-def render_metric_details(analysis: dict) -> None:
-    with st.expander("Comprendre les chiffres"):
-        for presentation in METRIC_PRESENTATION.values():
-            st.markdown(f"**{presentation['title']}**")
-            st.caption(f"Terme technique : {presentation['technical']}")
-            st.write(presentation["definition"])
-        st.markdown("**Répartition par grandes catégories**")
-        for key, value in analysis["after"].get("weights_by_class_pct", {}).items():
-            st.write(
-                f"{readable_label(key, ASSET_CLASS_LABELS)} : {format_weight(value)}"
-            )
+def render_methodology() -> None:
+    with st.expander("Comprendre le calcul"):
+        st.markdown(
+            "- Les deux portefeuilles sont comparés sur les mêmes dates, "
+            "lorsque les données de tous les placements sont disponibles."
+        )
+        st.markdown(
+            "- Les valeurs sont exprimées en dollars canadiens; les prix en "
+            "dollars américains sont convertis avec le taux de change."
+        )
+        st.markdown(
+            "- Les placements sont conservés sans rééquilibrage; leurs "
+            "pondérations évoluent avec les prix."
+        )
+        st.markdown("- Les frais et les taxes ne sont pas inclus.")
 
 
-def render_sources(
-    analysis: dict,
-    checks: list[dict],
-    explanation: dict | None,
-    request: dict,
-    response: dict,
-) -> None:
-    with st.expander("Vérifier les sources"):
+def render_sources(analysis: dict, checks: list[dict]) -> None:
+    with st.expander("Consulter les sources"):
         for source in analysis.get("sources", []):
-            retrieved = source.get("retrieved_on") or "date non précisée"
-            label = (
-                f"{source.get('file', source.get('id', 'Source'))} — "
-                f"{source.get('source', 'origine non précisée')} "
-                f"(extrait le {retrieved})"
+            source_id = source.get("id", "")
+            organization, role = SOURCE_PRESENTATION.get(
+                source_id, ("Organisme non précisé", "document de référence")
             )
+            retrieved = source.get("retrieved_on")
+            date_label = (
+                f" · consulté le {format_date_fr(retrieved)}"
+                if retrieved
+                else " · date non précisée"
+            )
+            source_name = f"{organization} — {role}"
+            title = source.get("title") or source.get("file") or "Document source"
             url = source.get("source_url")
-            st.markdown(f"- [{label}]({url})" if url and url != "n/a" else f"- {label}")
-            if source.get("limitations"):
-                st.caption(source["limitations"])
+            st.markdown(f"**{source_name}**{date_label}")
+            st.markdown(
+                f"- [{title}]({url})" if url and url != "n/a" else f"- {title}"
+            )
+
         for check in checks:
             for item in check.get("evidence", {}).get("assessed_evidence", []):
-                publisher = item.get("publisher", "Source non précisée")
-                date = item.get("date") or "date non précisée"
-                url = item.get("url")
-                line = f"**{publisher}** ({date}) — {item.get('claim', '')}"
-                st.markdown(
-                    f"- {line} [Consulter la source]({url})" if url else f"- {line}"
+                publisher = item.get("publisher", "Organisme non précisé")
+                title = item.get("title", "Document source")
+                date_value = item.get("date")
+                date_type = (
+                    "publié le"
+                    if item.get("date_type") == "publication"
+                    else "consulté le"
                 )
-                if item.get("company_published_source"):
-                    st.caption("Source publiée par l’entreprise concernée.")
-                if item.get("limitation"):
-                    st.caption(item["limitation"])
+                date_label = (
+                    f" · {date_type} {format_date_fr(date_value)}"
+                    if date_value
+                    else ""
+                )
+                url = item.get("url")
+                st.markdown(
+                    f"**{publisher} — document associé au contrôle ESG**"
+                    f"{date_label}"
+                )
+                st.markdown(
+                    f"- [{title}]({url})" if url else f"- {title}"
+                )
+
+
+def render_technical_details(
+    response: dict,
+    analysis: dict | None,
+    checks: list[dict],
+    request: dict,
+) -> None:
+    with st.expander("Détails techniques"):
+        for warning in response.get("warnings", []):
+            st.warning(warning)
+        if response.get("error"):
+            st.json(response["error"])
+        if analysis:
+            st.markdown("**Métriques, formules et données de comparaison**")
+            st.json(
+                {
+                    key: value
+                    for key, value in analysis.items()
+                    if key != "series"
+                }
+            )
+        st.markdown("**Contrôles individuels et preuves**")
+        for check in checks:
+            status = readable_label(check.get("status", ""), STATUS_LABELS)
+            title = readable_label(check.get("id", ""), CHECK_TITLE_LABELS)
+            st.markdown(f"**{title} — {status}**")
+            st.json(check)
+        explanation = response.get("explanation") or {}
+        if explanation:
+            st.markdown("**Réponse complète du modèle**")
+            st.json(explanation)
         references = []
-        for change in (explanation or {}).get("changes", []):
+        for check in checks:
+            references.extend(check.get("evidence_refs", []))
+        for change in explanation.get("changes", []):
             references.extend(change.get("evidence_refs", []))
-        for assessment in (explanation or {}).get("profile_assessment", []):
+        for assessment in explanation.get("profile_assessment", []):
             references.extend(assessment.get("evidence_refs", []))
         if references:
             render_evidence_references(
                 references, request, response, inside_expander=True
             )
-
-
-def render_methodology(analysis: dict) -> None:
-    with st.expander("Comment la comparaison est calculée"):
-        for value in analysis.get("methodology", {}).values():
-            st.write(value)
-        st.markdown("**Limites de la comparaison**")
-        for limitation in analysis.get("limitations", []):
-            st.markdown(f"- {limitation}")
-
-
-def render_technical_details(response: dict) -> None:
-    trace = response.get("tool_trace") or (
-        response.get("explanation") or {}
-    ).get("tool_trace", [])
-    with st.expander("Détails techniques"):
-        for warning in response.get("warnings", []):
-            st.warning(warning)
-        if not trace:
+        trace = response.get("tool_trace") or explanation.get("tool_trace", [])
+        st.markdown("**Traces des outils**")
+        if trace:
+            st.json(trace)
+        else:
             st.write("Aucune trace d’outil disponible.")
-        for entry in trace:
-            st.markdown(f"**{entry.get('tool', 'outil')} — {entry.get('status', 'inconnu')}**")
-            st.write("Arguments validés :", entry.get("arguments", {}))
-            st.caption(
-                "Origine d’exécution : "
-                + entry.get("execution_origin", "non précisée")
-            )
 
 
 st.set_page_config(
     page_title="AlphaForge AI - Datathon Polyfinances", layout="wide")
 
-theme = st.radio(
-    "Thème de l’interface",
-    ["Clair", "Sombre"],
-    horizontal=True,
-    key="app_theme",
-)
+with st.sidebar:
+    st.markdown("## AlphaForge")
+    st.caption("Comprendre avant de décider.")
+    st.markdown(
+        """
+        <nav class="af-nav" aria-label="Navigation principale">
+            <a href="#overview">Vue d’ensemble</a>
+            <a class="active" href="#scenario-form">Simuler un ajout</a>
+            <a href="#results">Résultats</a>
+            <a href="#sources-method">Sources &amp; méthode</a>
+        </nav>
+        """,
+        unsafe_allow_html=True,
+    )
+    theme = st.radio(
+        "Thème de l’interface",
+        ["Clair", "Sombre"],
+        index=1,
+        key="app_theme",
+    )
 
 try:
     css = CSS_PATH.read_text(encoding="utf-8")
@@ -392,12 +442,7 @@ color_scheme = "dark" if theme == "Sombre" else "light"
 st.html(
     f"<style>:root {{ {variables} color-scheme: {color_scheme}; }} {css}</style>")
 
-st.title("AlphaForge AI : comparaison de portefeuilles")
-st.write(
-    "Simulez l’ajout d’un actif au portefeuille fictif d’un persona et comparez "
-    "les résultats historiques."
-)
-
+st.html('<div id="overview"></div>')
 try:
     personas = read_json(DATA_DIR / "personas.json")["personas"]
     portfolios_by_id = {
@@ -414,50 +459,48 @@ except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
     st.stop()
 
 persona_by_name = {persona["name"]: persona for persona in personas}
-persona = persona_by_name[st.selectbox(
-    "Choisissez un persona", list(persona_by_name))]
+topbar = st.columns([2.2, 1.1, 1.0])
+with topbar[0]:
+    st.caption("Comprendre avant de décider.")
+with topbar[1]:
+    st.markdown(
+        '<span class="af-badge">AlphaForge AI · Agent Bedrock</span>',
+        unsafe_allow_html=True,
+    )
+with topbar[2]:
+    selected_persona_name = st.selectbox(
+        "Profil", list(persona_by_name), label_visibility="collapsed"
+    )
+persona = persona_by_name[selected_persona_name]
 portfolio = portfolios_by_id[persona["id"]]
 scenario = scenarios_by_id[persona["id"]]
 starting_weights = asset_weights(portfolio)
 
-st.subheader(f"Profil : {persona['name']}")
-st.write(f"**Objectif :** {persona['objective']}")
 horizon_end = persona["horizon_years_max"]
 horizon = (
     f"{persona['horizon_years_min']}–{horizon_end} ans"
     if horizon_end is not None
     else f"{persona['horizon_years_min']} ans et plus"
 )
-st.write(f"**Horizon :** {horizon}")
-preferences = [
-    "ESG (critères environnementaux, sociaux et de gouvernance)"
-    if preference == "ESG"
-    else preference
-    for preference in persona["preferences"]
-]
-st.write("**Préférences :** " + ", ".join(preferences))
-st.write(
-    "**Informations inconnues :** "
-    + (
-        ", ".join(translated_missing(persona.get("missing_information", [])))
-        or "Aucune indiquée."
-    )
-)
-st.markdown("**Portefeuille fictif initial**")
-st.dataframe(
-    [{"Actif": symbol, "Pondération": format_weight(weight)}
-     for symbol, weight in starting_weights.items()],
-    hide_index=True,
-    width="stretch",
-)
-st.caption(portfolio.get("construction_note", "Hypothèse pédagogique."))
-if portfolio.get("esg_evidence_limitations"):
-    st.warning(portfolio["esg_evidence_limitations"])
-
-st.info(
-    "Le scénario est une hypothèse pédagogique, pas une recommandation. "
-    "Le poids ajouté est financé par une réduction proportionnelle des positions initiales."
-)
+with st.sidebar:
+    st.divider()
+    st.markdown(f"### {persona['name']}")
+    st.caption(f"{persona['objective']} · {horizon}")
+    with st.expander("Portefeuille fictif initial"):
+        st.dataframe(
+            [
+                {
+                    "Placement": assets.get(symbol, {}).get("name", "Autre placement"),
+                    "Pondération": format_weight(weight),
+                }
+                for symbol, weight in starting_weights.items()
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+        st.caption(portfolio.get("construction_note", "Hypothèse pédagogique."))
+        if portfolio.get("esg_evidence_limitations"):
+            st.caption(portfolio["esg_evidence_limitations"])
 
 available_symbols = sorted(set(assets) - set(starting_weights))
 if not ENGINE_AVAILABLE:
@@ -470,18 +513,46 @@ if not available_symbols:
 default_symbol = scenario["symbol"]
 default_index = available_symbols.index(
     default_symbol) if default_symbol in available_symbols else 0
+
+title_symbol = st.session_state.get("selected_symbol", default_symbol)
+if title_symbol not in available_symbols:
+    title_symbol = default_symbol
+st.title(f"Et si vous ajoutiez {title_symbol} ?")
+st.write("Mesurez l’impact sur votre portefeuille et comprenez les compromis.")
+
+st.html('<div id="scenario-form"></div>')
 with st.form("custom_scenario_form"):
-    col_symbol, col_weight = st.columns(2)
+    col_profile, col_symbol, col_weight, col_action = st.columns(
+        [0.85, 1.15, 1.45, 1.3]
+    )
+    with col_profile:
+        st.markdown("**Profil**")
+        st.markdown(persona["name"])
     with col_symbol:
         selected_symbol = st.selectbox(
-            "Actif à ajouter", available_symbols, index=default_index
+            "Actif",
+            available_symbols,
+            index=default_index,
+            key="selected_symbol",
+            format_func=lambda symbol: (
+                f"{symbol} · {assets.get(symbol, {}).get('name', symbol)}"
+            ),
         )
     with col_weight:
         target_weight = st.slider(
             "Poids cible (%)", min_value=1.0, max_value=50.0,
             value=float(scenario["target_weight_pct"]), step=0.5,
+            key="target_weight",
         )
-    submitted = st.form_submit_button("Analyser le changement", type="primary")
+    with col_action:
+        st.markdown("**Analyse**")
+        submitted = st.form_submit_button(
+            "Analyser le scénario", type="primary"
+        )
+st.caption(
+    "Financement : réduction proportionnelle des positions existantes."
+)
+st.html('<div id="results"></div>')
 
 if submitted:
     analyzed_request = request_key(persona["id"], selected_symbol, target_weight)
@@ -511,9 +582,12 @@ if stored_request and response:
     stored_analysis = response.get("analysis") or {}
     stored_persona = stored_analysis.get("persona", {})
     stored_name = stored_persona.get("name", stored_request["persona_id"].title())
+    stored_asset_name = assets.get(stored_request["symbol"], {}).get(
+        "name", "cet actif"
+    )
     st.markdown(
         "**Résultat conservé :** "
-        f"{stored_name} · {stored_request['symbol']} · "
+        f"{stored_name} · {stored_asset_name} · "
         f"{format_weight(stored_request['target_weight_pct'])}"
     )
     if current_request != stored_request:
@@ -524,17 +598,18 @@ if stored_request and response:
         )
 
     status = response.get("status")
+    technical_mode = st.toggle(
+        "Mode technique",
+        value=False,
+        help="Affiche les métriques brutes, les contrôles et les preuves détaillés.",
+    )
     if status == "error":
-        error = response.get("error", {})
         st.error(
             "Nous n’avons pas pu produire le rapport. Vérifiez les choix du "
             "formulaire, puis relancez l’analyse."
         )
-        with st.expander("Détails techniques"):
-            st.write(
-                f"{error.get('code', 'INTERNAL_ERROR')} — "
-                f"{error.get('message', 'Erreur non précisée.')}"
-            )
+        if technical_mode:
+            render_technical_details(response, None, [], stored_request)
     else:
         analysis = response.get("analysis")
         checks = response.get("checks") or []
@@ -542,26 +617,62 @@ if stored_request and response:
             st.success("Votre rapport est prêt.")
         elif status == "partial":
             st.warning(
-                "Les calculs sont disponibles, mais l’explication automatique "
+                "Les calculs sont disponibles; l’explication automatique "
                 "n’a pas pu être produite."
             )
         if analysis:
             explanation = response.get("explanation")
-            render_simulation(
-                analysis, assets.get(stored_request["symbol"], {})
+            stored_asset = assets.get(stored_request["symbol"], {})
+            stored_asset_name = stored_asset.get("name", "cet actif")
+            report_persona = stored_persona or persona
+            report_horizon_end = report_persona.get("horizon_years_max")
+            report_horizon = (
+                f"{report_persona['horizon_years_min']}–{report_horizon_end} ans"
+                if report_horizon_end is not None
+                else f"{report_persona['horizon_years_min']} ans et plus"
             )
-            render_summary(explanation)
-            render_analysis(analysis, explanation)
-            render_priorities(stored_name, checks, explanation)
-            render_remaining(analysis, checks, explanation)
-            render_metric_details(analysis)
-            render_sources(
-                analysis, checks, explanation, stored_request, response
-            )
-            render_methodology(analysis)
-            render_technical_details(response)
+            render_simulation(analysis, stored_asset)
+            report_left, report_right = st.columns([1.8, 1.0], gap="medium")
+            with report_left:
+                with st.container(border=True):
+                    render_analysis(analysis)
+                with st.container(border=True):
+                    render_chart(analysis, stored_asset_name)
+                with st.container(border=True):
+                    st.subheader("Ce qui change")
+                    render_weight_details(analysis, assets)
+            with report_right:
+                with st.container(border=True):
+                    st.subheader("L’éclairage de l’agent")
+                    render_summary(analysis, stored_asset_name, explanation)
+                    render_priorities(
+                        stored_persona or persona,
+                        checks,
+                        explanation,
+                        stored_asset_name,
+                    )
+                    render_remaining(stored_persona or persona, checks)
+                with st.container(border=True):
+                    st.subheader("Analyse traçable")
+                    st.write(
+                        f"Profil consulté : {stored_name} · "
+                        f"{report_persona['objective']} · {report_horizon}."
+                    )
+                    st.write(
+                        f"Simulation calculée : ajout de {stored_asset_name} "
+                        f"à {format_weight(stored_request['target_weight_pct'])}."
+                    )
+                    st.write(f"Contrôles exécutés : {len(checks)}.")
+                with st.container(border=True):
+                    st.html('<div id="sources-method"></div>')
+                    render_methodology()
+                    render_sources(analysis, checks)
+            if technical_mode:
+                render_technical_details(
+                    response, analysis, checks, stored_request
+                )
 
 st.caption(
-    "Simulation académique historique, pas une prévision ni un conseil en placement. "
+    "Les résultats historiques ne préjugent pas des résultats futurs. "
     "Aucune transaction n’est exécutée."
 )
