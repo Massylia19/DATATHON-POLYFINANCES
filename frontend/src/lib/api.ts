@@ -1,4 +1,4 @@
-import type { AnalysisResponse, Bootstrap, ComparisonResponse, EvidenceResponse, FollowUpResponse, InterpretResponse, ScenarioRequest } from "../types";
+import type { AnalysisResponse, Bootstrap, ChatRequest, ChatResponse, ComparisonResponse, EvidenceResponse, FollowUpResponse, InterpretResponse, ScenarioRequest } from "../types";
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -56,4 +56,5 @@ export const api = {
   interpret: (text: string, current_request?: ScenarioRequest, signal?: AbortSignal) => request<InterpretResponse>("/api/interpret", { method: "POST", body: JSON.stringify({ text, current_request }) }, signal, AGENT_TIMEOUT_MS),
   followUp: (analysis_id: string, question: string, signal?: AbortSignal) => request<FollowUpResponse>("/api/follow-ups", { method: "POST", body: JSON.stringify({ analysis_id, question }) }, signal, AGENT_TIMEOUT_MS),
   evidence: (analysis_id: string, references: string[], signal?: AbortSignal) => request<EvidenceResponse>("/api/evidence", { method: "POST", body: JSON.stringify({ analysis_id, references }) }, signal),
+  chat: (payload: ChatRequest, signal?: AbortSignal) => request<ChatResponse>("/api/chat", { method: "POST", body: JSON.stringify(payload) }, signal, AGENT_TIMEOUT_MS),
 };

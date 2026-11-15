@@ -1,4 +1,4 @@
-import { MessageCircleQuestion, SendHorizontal, Sparkles } from "lucide-react";
+import { MessageCircle, MessageCircleQuestion, SendHorizontal, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type {
   AnalysisResponse,
@@ -39,10 +39,12 @@ export function AssistantPanel({
   result,
   stale,
   onApplyProposal,
+  onOpenConversation,
 }: {
   result: AnalysisResponse | null;
   stale: boolean;
   onApplyProposal: (request: ScenarioRequest) => void;
+  onOpenConversation: () => void;
 }) {
   const [question, setQuestion] = useState("");
   const [pendingQuestion, setPendingQuestion] = useState("");
@@ -129,21 +131,24 @@ export function AssistantPanel({
     <Card className="assistant-page">
       <header className="assistant-head">
         <h2><Sparkles aria-hidden="true" />Posez une question sur cette simulation</h2>
-        {result && !stale && (
-          <div className="assistant-meta">
-            <ContextBar result={result} />
-            <InfoTip label="Comment l’assistant répond">
-              Chaque réponse s’appuie sur cette analyse et ses preuves. Les questions sont indépendantes; aucun historique de conversation n’est utilisé.
-            </InfoTip>
-          </div>
-        )}
+        <div className="assistant-meta">
+          {result && !stale && (
+            <>
+              <ContextBar result={result} />
+              <InfoTip label="Comment l’assistant répond">
+                Chaque réponse s’appuie sur cette analyse et ses preuves. Les questions sont indépendantes; aucun historique de conversation n’est utilisé.
+              </InfoTip>
+            </>
+          )}
+          <Button type="button" onClick={onOpenConversation}><MessageCircle aria-hidden="true" />Ouvrir la conversation</Button>
+        </div>
       </header>
       {result && !stale ? (
         <>
           <div className="chat-thread" aria-live="polite">
             {!shownQuestion && !error && (
               <div className="chat-row bot">
-                <span className="chat-avatar" aria-hidden="true"><Sparkles /></span>
+                <span className="assistant-avatar" aria-hidden="true"><Sparkles /></span>
                 <div className="chat-bubble">
                   <p>Je peux expliquer les résultats de {result.analysis.persona.name} avec {result.request.symbol}. Choisissez une question ou écrivez la vôtre.</p>
                 </div>
@@ -156,13 +161,13 @@ export function AssistantPanel({
             )}
             {busy && (
               <div className="chat-row bot">
-                <span className="chat-avatar" aria-hidden="true"><Sparkles /></span>
+                <span className="assistant-avatar" aria-hidden="true"><Sparkles /></span>
                 <div className="chat-bubble typing"><Spinner /><span>Réponse en cours…</span></div>
               </div>
             )}
             {activeAnswer?.type === "answer" && (
               <div className="chat-row bot">
-                <span className="chat-avatar" aria-hidden="true"><Sparkles /></span>
+                <span className="assistant-avatar" aria-hidden="true"><Sparkles /></span>
                 <div className="chat-bubble answer-card">
                   {activeAnswer.response.status === "success"
                     ? <p>{activeAnswer.response.answer}</p>
@@ -187,7 +192,7 @@ export function AssistantPanel({
             )}
             {activeAnswer?.type === "proposal" && (
               <div className="chat-row bot">
-                <span className="chat-avatar" aria-hidden="true"><Sparkles /></span>
+                <span className="assistant-avatar" aria-hidden="true"><Sparkles /></span>
                 <div className="chat-bubble proposal-card">
                   <p className="eyebrow">Variante proposée</p>
                   {activeAnswer.response.status === "ready" ? (

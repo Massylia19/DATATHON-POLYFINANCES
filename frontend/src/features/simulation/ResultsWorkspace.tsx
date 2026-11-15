@@ -293,10 +293,12 @@ export function AssistantPage({
   result,
   stale,
   onApplyProposal,
+  onOpenConversation,
 }: {
   result: AnalysisResponse | null;
   stale: boolean;
   onApplyProposal: (request: ScenarioRequest) => void;
+  onOpenConversation: () => void;
 }) {
   return (
     <AssistantPanel
@@ -304,6 +306,7 @@ export function AssistantPage({
       result={result}
       stale={stale}
       onApplyProposal={onApplyProposal}
+      onOpenConversation={onOpenConversation}
     />
   );
 }

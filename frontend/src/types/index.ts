@@ -22,3 +22,6 @@ export type FollowUpResponse = { status: "success"; answer: string; evidence_ref
 export interface PublicEvidence { label: string; value: string; source?: string; role?: string; date?: string; url?: string; limitation?: string; }
 export interface EvidenceResponse { analysis_id: string; evidence: PublicEvidence[]; }
 export interface SavedScenario { id: string; saved_at: string; request: ScenarioRequest; }
+export interface ChatMessage { role: "user" | "assistant"; content: string; }
+export interface ChatRequest { persona_id: PersonaId; question: string; analysis_id: string | null; history: ChatMessage[]; }
+export interface ChatResponse { status: "success"; answer: string; persona_id: PersonaId; analysis_id: string | null; }
