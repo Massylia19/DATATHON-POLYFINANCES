@@ -14,6 +14,7 @@ from agent.service import (
     analyze_custom_portfolio,
     analyze_request,
     answer_follow_up,
+    chat_with_persona,
     interpret_scenario_request,
 )
 from alphaforge.engine import load_asset_universe
@@ -87,6 +88,29 @@ def follow_up(
     question: str, response: dict[str, Any], request: dict[str, Any]
 ) -> dict[str, Any]:
     return answer_follow_up(question, response, request, root=ROOT)
+
+
+def chat(
+    persona_id: str,
+    question: str,
+    history: list[dict[str, str]],
+    analysis_response: dict[str, Any] | None = None,
+) -> str:
+    personas = _json("personas.json")["personas"]
+    portfolios = _json("portfolios.json")["portfolios"]
+    persona = next((item for item in personas if item["id"] == persona_id), None)
+    portfolio = next(
+        (item for item in portfolios if item["persona_id"] == persona_id), None
+    )
+    if persona is None or portfolio is None:
+        raise ValueError("Le profil ou son portefeuille est introuvable.")
+    return chat_with_persona(
+        question,
+        persona,
+        portfolio,
+        analysis_response=analysis_response,
+        history=history,
+    )
 
 
 _METRIC_EVIDENCE_LABELS = {

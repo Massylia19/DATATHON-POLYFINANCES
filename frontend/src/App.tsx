@@ -12,8 +12,8 @@ import type {
   ScenarioRequest,
 } from "./types";
 import { ScenarioPanel } from "./features/simulation/ScenarioPanel";
+import { ChatWidget } from "./features/chat/ChatWidget";
 import {
-  AssistantPage,
   CoherencePage,
   ComparisonPage,
   SourcesPage,
@@ -33,7 +33,6 @@ type PageId =
   | "simulation"
   | "portfolio-editor"
   | "coherence"
-  | "assistant"
   | "scenarios"
   | "sources";
 
@@ -44,7 +43,6 @@ const NAV_ITEMS: Array<{ id: PageId; label: string }> = [
   { id: "simulation", label: "Simuler un ajout" },
   { id: "portfolio-editor", label: "Éditeur de portefeuille" },
   { id: "coherence", label: "Cohérence du scénario" },
-  { id: "assistant", label: "Assistant" },
   { id: "scenarios", label: "Scénarios" },
   { id: "sources", label: "Sources et méthode" },
 ];
@@ -105,6 +103,7 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [savedScenarios, setSavedScenarios] = useState<SavedScenario[]>(loadSavedScenarios);
   const [storageError, setStorageError] = useState("");
+  const [chatOpen, setChatOpen] = useState(false);
   const requestNumber = useRef(0);
   const interpretationNumber = useRef(0);
   const draftRef = useRef<ScenarioRequest | null>(null);
@@ -134,6 +133,17 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    if (!chatOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest(".chat-window, .chat-launcher")) return;
+      setChatOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [chatOpen]);
 
   useEffect(() => {
     const syncPage = () => {
@@ -391,7 +401,6 @@ function App() {
           <span className="brand-tag">Simulation fictive</span>
         </a>
         <div className="header-actions">
-          <span className="active-persona">{persona.name} · profil fictif</span>
           <button
             className="theme"
             aria-label={`Activer le thème ${theme === "dark" ? "clair" : "sombre"}`}
@@ -449,7 +458,7 @@ function App() {
           {storageError && <p className="notice" role="status">{storageError}</p>}
 
           {page === "overview" && (
-            <OverviewPage {...pageContext} onNavigate={navigate} />
+            <OverviewPage {...pageContext} onNavigate={navigate} onOpenChat={() => setChatOpen(true)} />
           )}
           {page === "profiles" && (
             <ProfilesPage {...pageContext} onNavigate={navigate} />
@@ -480,6 +489,7 @@ function App() {
                   assets={data.assets}
                   onNavigate={navigate}
                   onSave={saveScenario}
+                  onAskQuestion={() => setChatOpen(true)}
                   comparison={<ComparisonPage draft={draft} personaName={persona.name} invalid={!formValid} assets={data.assets} />}
                 />
               </div>
@@ -509,21 +519,27 @@ function App() {
           {page === "coherence" && (
             <CoherencePage result={result} stale={stale} persona={persona.name} onNavigate={navigate} />
           )}
-          {page === "assistant" && (
-            <AssistantPage result={result} stale={stale} onApplyProposal={applyProposal} />
-          )}
           {page === "scenarios" && (
             <SavedScenariosPage
               saved={savedScenarios}
               assets={data.assets}
               onLoad={loadSavedScenario}
               onRemove={removeSavedScenario}
+              onNavigate={navigate}
             />
           )}
           {page === "sources" && <SourcesPage result={result} stale={stale} />}
           <footer className="legal-footer">Simulation pédagogique · aucune transaction réelle · le passé ne prédit pas l’avenir.</footer>
         </main>
       </div>
+      <ChatWidget
+        persona={persona}
+        analysisId={!stale ? result?.analysis_id ?? null : null}
+        analysisLabel={!stale && result ? `${result.request.symbol} · ${result.request.target_weight_pct} %` : undefined}
+        stale={Boolean(stale && result)}
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+      />
     </div>
   );
 }

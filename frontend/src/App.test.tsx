@@ -14,7 +14,6 @@ import type {
   AnalysisResponse,
   Bootstrap,
   ComparisonResponse,
-  FollowUpResponse,
   InterpretResponse,
   ScenarioRequest,
 } from "./types";
@@ -146,7 +145,6 @@ describe("parcours React AlphaForge", () => {
   it("explique les profils fictifs et la navigation avant toute analyse", async () => {
     renderApp();
     expect(await screen.findByRole("heading", { name: "Comprenez l’effet d’un changement de portefeuille." })).toBeInTheDocument();
-    expect(screen.getAllByText(/profils de démonstration/i).length).toBeGreaterThan(0);
     expect(screen.queryAllByText(/capacité à absorber une perte/i)).toHaveLength(0);
     expect(api.analyze).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Profils fictifs" }));
@@ -250,27 +248,16 @@ describe("parcours React AlphaForge", () => {
     expect(screen.queryByText("Variante A · 5 %")).not.toBeInTheDocument();
   });
 
-  it("relie chaque réponse d’assistant à l’analyse courante et ignore une réponse tardive", async () => {
-    const pending = deferred<FollowUpResponse>();
-    vi.mocked(api.followUp).mockReturnValue(pending.promise);
+  it("remplace la page Assistant par le chat flottant", async () => {
     renderApp();
+    const navigation = await screen.findByRole("navigation", { name: "Navigation principale" });
+    expect(within(navigation).queryByRole("button", { name: "Assistant" })).not.toBeInTheDocument();
     await openSimulation();
     fireEvent.click(screen.getByRole("button", { name: "Analyser le scénario" }));
     await waitFor(() => expect(api.analyze).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("button", { name: "Assistant" }));
-    const question = await screen.findByLabelText("Votre question");
-    fireEvent.change(question, { target: { value: "Pourquoi les fluctuations changent-elles ?" } });
-    fireEvent.click(screen.getByRole("button", { name: "Envoyer la question" }));
-    await waitFor(() => expect(api.followUp).toHaveBeenCalledTimes(1));
-    await openSimulation();
-    fireEvent.change(screen.getByRole("spinbutton", { name: "Saisir la part du nouvel actif en pourcentage" }), { target: { value: "15" } });
-    fireEvent.click(screen.getByRole("button", { name: "Analyser le scénario" }));
-    await waitFor(() => expect(api.analyze).toHaveBeenCalledTimes(2));
-    fireEvent.click(screen.getByRole("button", { name: "Assistant" }));
-    pending.resolve({ status: "success", answer: "Ancienne réponse.", evidence_refs: [], origin: "bedrock" });
-    expect(await screen.findByText(/Posez une question sur cette simulation/)).toBeInTheDocument();
-    expect(screen.queryByText("Ancienne réponse.")).not.toBeInTheDocument();
-  }, 15_000);
+    fireEvent.click(await screen.findByRole("button", { name: /Poser une question sur ce résultat/ }));
+    expect(await screen.findByRole("dialog", { name: "Assistant AlphaForge" })).toBeInTheDocument();
+  });
 
   it("enregistre et rouvre un scénario uniquement sur cet appareil", async () => {
     renderApp();

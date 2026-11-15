@@ -90,6 +90,32 @@ class FollowUpRequest(StrictModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+class ChatMessage(StrictModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=8000)
+
+    @field_validator("content")
+    @classmethod
+    def nonempty_content(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Le message ne peut pas être vide.")
+        return value.strip()
+
+
+class ChatRequest(StrictModel):
+    persona_id: PersonaId
+    question: str = Field(min_length=1, max_length=2000)
+    analysis_id: Optional[str] = Field(default=None, min_length=16, max_length=128)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=10)
+
+    @field_validator("question")
+    @classmethod
+    def nonempty_question(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("La question ne peut pas être vide.")
+        return value.strip()
+
+
 class EvidenceRequest(StrictModel):
     analysis_id: str = Field(min_length=16, max_length=128)
     references: list[str] = Field(min_length=1, max_length=100)
