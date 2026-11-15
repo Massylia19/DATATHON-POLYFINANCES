@@ -1,4 +1,4 @@
-import { BookOpen, Bookmark, ChevronRight, FlaskConical, Home, Menu, Moon, ShieldCheck, Sparkles, Sun, Users, X } from "lucide-react";
+import { BookOpen, Bookmark, ChevronRight, FlaskConical, Home, Menu, Moon, ShieldCheck, Sun, Users, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./lib/api";
@@ -14,7 +14,6 @@ import type {
 import { ScenarioPanel } from "./features/simulation/ScenarioPanel";
 import { ChatWidget } from "./features/chat/ChatWidget";
 import {
-  AssistantPage,
   CoherencePage,
   ComparisonPage,
   SourcesPage,
@@ -31,7 +30,6 @@ type PageId =
   | "profiles"
   | "simulation"
   | "coherence"
-  | "assistant"
   | "scenarios"
   | "sources";
 
@@ -41,7 +39,6 @@ const NAV_ITEMS: Array<{ id: PageId; label: string; icon: LucideIcon; needsResul
   { id: "profiles", label: "Profils fictifs", icon: Users },
   { id: "simulation", label: "Simuler un ajout", icon: FlaskConical },
   { id: "coherence", label: "Cohérence", icon: ShieldCheck, needsResult: true },
-  { id: "assistant", label: "Assistant", icon: Sparkles, needsResult: true },
   { id: "scenarios", label: "Mes scénarios", icon: Bookmark },
   { id: "sources", label: "Sources et méthode", icon: BookOpen },
 ];
@@ -131,6 +128,17 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    if (!chatOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest(".chat-window, .chat-launcher")) return;
+      setChatOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [chatOpen]);
 
   useEffect(() => {
     const syncPage = () => {
@@ -455,7 +463,7 @@ function App() {
           {storageError && <p className="notice" role="status">{storageError}</p>}
 
           {page === "overview" && (
-            <OverviewPage {...pageContext} onNavigate={navigate} />
+            <OverviewPage {...pageContext} onNavigate={navigate} onOpenChat={() => setChatOpen(true)} />
           )}
           {page === "profiles" && (
             <ProfilesPage {...pageContext} onNavigate={navigate} />
@@ -486,6 +494,7 @@ function App() {
                   assets={data.assets}
                   onNavigate={navigate}
                   onSave={saveScenario}
+                  onAskQuestion={() => setChatOpen(true)}
                   comparison={<ComparisonPage draft={draft} personaName={persona.name} invalid={!formValid} assets={data.assets} />}
                 />
               </div>
@@ -493,9 +502,6 @@ function App() {
           )}
           {page === "coherence" && (
             <CoherencePage result={result} stale={stale} persona={persona.name} onNavigate={navigate} />
-          )}
-          {page === "assistant" && (
-            <AssistantPage result={result} stale={stale} onApplyProposal={applyProposal} onOpenConversation={() => setChatOpen(true)} />
           )}
           {page === "scenarios" && (
             <SavedScenariosPage

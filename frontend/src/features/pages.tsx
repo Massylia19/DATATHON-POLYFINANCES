@@ -91,10 +91,10 @@ function profileItems(context: PageContext) {
 const overviewSteps = [
   { page: "simulation", icon: SlidersHorizontal, title: "Simuler", text: "Ajoutez un placement, voyez l’effet." },
   { page: "coherence", icon: ShieldCheck, title: "Vérifier", text: "Repérez les points de vigilance pour le profil." },
-  { page: "assistant", icon: MessageCircleQuestion, title: "Comprendre", text: "Posez une question sur le résultat." },
+  { page: "chat", icon: MessageCircleQuestion, title: "Comprendre", text: "Posez une question à l’assistant." },
 ] as const;
 
-export function OverviewPage(context: PageContext & { onNavigate: (page: string) => void }) {
+export function OverviewPage(context: PageContext & { onNavigate: (page: string) => void; onOpenChat?: () => void }) {
   return (
     <div className="page-stack overview">
       <section className="page-intro overview-hero">
@@ -139,7 +139,7 @@ export function OverviewPage(context: PageContext & { onNavigate: (page: string)
 
       <section className="how-it-works" aria-label="Comment ça marche">
         {overviewSteps.map(({ page, icon: Icon, title, text }, index) => (
-          <button key={page} type="button" className="how-step" onClick={() => context.onNavigate(page)}>
+          <button key={page} type="button" className="how-step" onClick={() => (page === "chat" ? context.onOpenChat?.() : context.onNavigate(page))}>
             <span className="how-icon" aria-hidden="true"><Icon /></span>
             <span>
               <strong>{index + 1}. {title}</strong>

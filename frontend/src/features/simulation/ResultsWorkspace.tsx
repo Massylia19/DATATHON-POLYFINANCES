@@ -20,7 +20,6 @@ import { Badge, Button, Card, InfoTip, Spinner } from "../../components/ui";
 import { HistoricalChart } from "../../components/HistoricalChart";
 import { MetricCard } from "../../components/MetricCard";
 import { ContextBar } from "../../components/AnalysisContextBar";
-import { AssistantPanel } from "./AssistantPanel";
 
 const sourceRoles: Record<string, string> = {
   src_prices_daily: "Historique quotidien des prix",
@@ -57,6 +56,7 @@ export function SummaryPage({
   assets,
   onNavigate,
   onSave,
+  onAskQuestion,
   comparison,
 }: {
   result: AnalysisResponse | null;
@@ -64,6 +64,7 @@ export function SummaryPage({
   assets: Asset[];
   onNavigate: (page: string) => void;
   onSave: (request: ScenarioRequest) => void;
+  onAskQuestion?: () => void;
   comparison?: ReactNode;
 }) {
   if (!result || stale) return <><Card><EmptyResult stale={stale} /></Card>{comparison}</>;
@@ -157,7 +158,7 @@ export function SummaryPage({
         <nav className="result-links" aria-label="Approfondir cette simulation">
           <button type="button" onClick={() => onNavigate("coherence")}><ShieldCheck aria-hidden="true" />Examiner la cohérence du scénario <span>›</span></button>
           <button type="button" onClick={() => onNavigate("sources")}><BookOpen aria-hidden="true" />Consulter les preuves et les sources <span>›</span></button>
-          <button type="button" onClick={() => onNavigate("assistant")}><Sparkles aria-hidden="true" />Poser une question sur ce résultat <span>›</span></button>
+          <button type="button" onClick={() => onAskQuestion?.()}><Sparkles aria-hidden="true" />Poser une question sur ce résultat <span>›</span></button>
         </nav>
       </Card>
     </div>
@@ -289,27 +290,6 @@ export function CoherencePage({
   );
 }
 
-export function AssistantPage({
-  result,
-  stale,
-  onApplyProposal,
-  onOpenConversation,
-}: {
-  result: AnalysisResponse | null;
-  stale: boolean;
-  onApplyProposal: (request: ScenarioRequest) => void;
-  onOpenConversation: () => void;
-}) {
-  return (
-    <AssistantPanel
-      key={`${result?.analysis_id ?? "none"}:${stale}`}
-      result={result}
-      stale={stale}
-      onApplyProposal={onApplyProposal}
-      onOpenConversation={onOpenConversation}
-    />
-  );
-}
 
 export function SourcesPage({
   result,

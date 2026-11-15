@@ -504,35 +504,6 @@ input[type="range"] { min-height: 30px; padding: 4px 0; border: 0; accent-color:
 .saved-actions .button svg { width: 15px; height: 15px; }
 .button.danger:hover:not(:disabled) { border-color: var(--error); color: var(--error); }
 
-.assistant-page { display: grid; max-width: 920px; gap: 12px; }
-.assistant-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
-.assistant-head h2 { display: flex; align-items: center; gap: 8px; margin: 0; }
-.assistant-head h2 svg { width: 18px; height: 18px; color: var(--accent); }
-.assistant-meta { display: flex; align-items: center; gap: 4px; }
-.assistant-meta .context-bar { margin: 0; }
-.chat-thread { display: grid; gap: 10px; min-height: 120px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
-.chat-row { display: flex; align-items: flex-end; gap: 8px; }
-.chat-row.user { justify-content: flex-end; }
-.assistant-avatar { display: grid; width: 30px; height: 30px; flex-shrink: 0; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-.assistant-avatar svg { width: 15px; height: 15px; }
-.chat-bubble { max-width: min(640px, 85%); margin: 0; padding: 10px 13px; border: 1px solid var(--border); border-radius: 14px 14px 14px 4px; background: var(--surface); }
-.chat-bubble p { margin: 0; }
-.chat-bubble p + p, .chat-bubble p + .button { margin-top: 6px; }
-.chat-row.user .chat-bubble { border-color: transparent; border-radius: 14px 14px 4px 14px; background: color-mix(in srgb, var(--accent) 20%, var(--surface)); }
-.chat-bubble.typing { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: var(--fs-sm); }
-.chat-bubble.answer-card, .chat-bubble.proposal-card { margin-top: 0; }
-.chat-bubble .notice { margin: 0; padding: 0; border: 0; }
-.chat-evidence { margin-top: 8px; }
-.chat-evidence > summary { color: var(--muted); }
-.assistant-page .suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
-.assistant-page .suggestions button { display: inline-flex; min-height: 0; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: var(--fs-sm); }
-.assistant-page .suggestions button svg { width: 13px; height: 13px; color: var(--accent); }
-.chat-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
-.chat-form .button { min-width: 0; }
-.chat-form .button svg { width: 16px; height: 16px; }
-.assistant-empty { min-height: 200px; gap: 8px; justify-items: center; }
-.assistant-empty svg { width: 34px; height: 34px; color: var(--muted); }
-
 .sidebar nav button { display: flex; align-items: center; gap: 10px; }
 .nav-icon { width: 17px; height: 17px; flex-shrink: 0; color: var(--muted); }
 .sidebar nav button:hover .nav-icon { color: var(--text); }
@@ -679,13 +650,9 @@ th, td { min-width: 85px; padding: 8px; border-bottom: 1px solid var(--border); 
 .variant-results>.notice, .variant-results>.technical-details { grid-column: 1 / -1; }
 .variant-card p { color: var(--muted); }
 
-.assistant-page { max-width: 900px; }
-.assistant-page>p { color: var(--muted); }
 .suggestions { display: grid; gap: 8px; margin: 15px 0; }
 .suggestions button { display: flex; min-height: 46px; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); color: var(--text); text-align: left; cursor: pointer; }
 .suggestions button:hover:not(:disabled) { border-color: var(--accent); }
-.assistant-page form { display: grid; gap: 8px; }
-.assistant-page form .button { justify-self: start; min-width: 180px; }
 .answer-card { margin-top: 16px; }
 .saved-page>p { color: var(--muted); }
 .saved-list { display: grid; gap: 10px; margin-top: 16px; }
@@ -757,7 +724,7 @@ input, select { min-height: 38px; padding: 7px 10px; font-size: var(--fs-base); 
 .check-card, .source-card, .answer-card, .evidence-card { padding: 11px 13px; }
 .check-card h3, .source-card h4 { font-size: var(--fs-base); }
 .check-card > p, .source-card p, .answer-card p, .evidence-card p { font-size: var(--fs-sm); }
-.coherence-page > p, .sources-page > p, .comparison-page > p, .assistant-page > p, .saved-page > p { font-size: var(--fs-sm); }
+.coherence-page > p, .sources-page > p, .comparison-page > p, .saved-page > p { font-size: var(--fs-sm); }
 .method-list, .sources-page ul { font-size: var(--fs-sm); }
 .suggestions button { min-height: 40px; padding: 8px 12px; font-size: var(--fs-base); }
 .saved-item h2 { font-size: var(--fs-base); }
