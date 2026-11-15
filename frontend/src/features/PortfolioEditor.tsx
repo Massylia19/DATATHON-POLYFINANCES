@@ -1,6 +1,6 @@
 import { AlertCircle, Check, Loader2, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Asset, Bootstrap, CustomPortfolioResponse, PersonaId, Portfolio } from "../types";
+import type { Asset, Bootstrap, CustomPortfolioResponse, PersonaId } from "../types";
 import { api } from "../lib/api";
 
 interface PortfolioEditorProps {
