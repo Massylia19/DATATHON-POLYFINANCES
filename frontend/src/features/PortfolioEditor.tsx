@@ -8,11 +8,6 @@ interface PortfolioEditorProps {
   onResult: (result: CustomPortfolioResponse) => void;
 }
 
-interface WeightEntry {
-  symbol: string;
-  weight: number;
-}
-
 export function PortfolioEditor({ data, onResult }: PortfolioEditorProps) {
   const [selectedPersonaId, setSelectedPersonaId] = useState<PersonaId>("amira");
   const [weights, setWeights] = useState<Record<string, number>>({});
