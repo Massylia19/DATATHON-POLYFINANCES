@@ -2,7 +2,7 @@
 
 > **Si je consacre X % de mon portefeuille à cet actif, qu'est-ce qui change et quels compromis dois-je comprendre compte tenu de mon profil ?**
 
-AlphaForge AI est un assistant de simulation. Il compare un portefeuille fictif **avant** et **après** l'ajout d'un actif, sur des données historiques réelles, puis vérifie la cohérence du changement avec le profil de l'investisseur et explique les compromis.
+AlphaForge AI est une application pédagogique de simulation. Elle compare un portefeuille fictif **avant** et **après** l'ajout d'un actif, sur des données historiques réelles, puis examine la cohérence du changement avec le profil et explique les compromis.
 
 > ⚠️ **Avertissement.** Il s'agit d'une comparaison historique hypothétique à but pédagogique. Ce n'est ni une prévision, ni une recommandation, ni un conseil en placement. Les personas et les portefeuilles sont fictifs.
 
@@ -19,16 +19,18 @@ L'interface permet aussi de tester n'importe quel actif du jeu de données, à n
 ### Architecture
 
 ```text
-Interface (app.py)
-   │  persona, actif, poids
+Interface React / TypeScript (frontend/)
+   │  profil, actif, poids
    ▼
-Agent IA sur AWS Bedrock ──► outil 1 : moteur de simulation   (alphaforge/engine.py)
-   │                     └─► outil 2 : contrôles du profil    (alphaforge/profile_checks.py)
+API FastAPI (api/)
+   │                     ├─► moteur de simulation            (alphaforge/engine.py)
+   │                     ├─► contrôles du profil              (alphaforge/profile_checks.py)
+   │                     └─► explication facultative (Bedrock)
    ▼
-Explication structurée : changements, cohérences, tensions, limites
+Résultat structuré : métriques, contrôles, preuves et limites
 ```
 
-Le **code calcule**, le **modèle explique**. Aucun chiffre n'est produit par le modèle de langage.
+Le **code calcule**, le **modèle explique**. Aucun chiffre n'est produit par le modèle de langage. Streamlit demeure disponible comme interface historique; le parcours principal est l'application React.
 
 ---
 
@@ -186,7 +188,7 @@ Avec *V₀ … Vₙ* les valeurs du portefeuille et *rₜ = Vₜ / Vₜ₋₁ �
 
 ### 6. Vérifications
 
-Le dépôt contient 49 tests automatisés. Les calculs sont vérifiés sur des exemples simples calculés à la main, indépendamment des données réelles :
+Les tests automatisés vérifient les calculs, les contrats de l'agent et les parcours AppTest. Ils incluent des exemples simples calculés à la main, indépendamment des données réelles :
 
 - conversion : un prix de 10 USD un jour sans taux, entre un taux de 1,25 la veille et de 1,30 le lendemain, donne **12,50 CAD** et non 13,00 ;
 - indicateurs : la série [100, 110, 99] donne un rendement de **−1 %**, une baisse maximale de **−10 %** et une volatilité de √0,02 × √252 ;
@@ -215,21 +217,79 @@ Ce que les chiffres montrent, sans constituer un verdict :
 
 ## Contrôles du profil et preuves ESG
 
-> _À compléter par la Personne 4 : contrôles par persona, statuts `consistent` / `tension` / `insufficient_information`, preuves ESG utilisées (source, date, limites), seuils choisis par l'équipe, tests d'acceptation, lien vers le résumé d'une page._
+Les contrôles sont exécutés par `alphaforge/profile_checks.py`. Ils conservent les statuts `consistent`, `tension` et `insufficient_information` ainsi que les preuves et les informations manquantes propres à chaque contrôle. Une information absente n'est pas transformée en conclusion positive ou négative. Les limites et références ESG datées sont conservées dans le rapport détaillé.
 
 ---
 
 ## Agent IA et AWS
 
-> _À compléter par la Personne 2 : architecture de l'agent, outils appelés, modèle Bedrock et région (sans secret ni identifiant), commandes pour lancer et tester l'agent, comportement en cas d'échec AWS (statut `partial`), exemple de `tool_trace`._
+`agent.service.analyze_request` orchestre deux outils locaux déterministes : `simulate_portfolio_change`, puis `check_profile`. Bedrock Converse produit ensuite une explication structurée, validée par rapport aux preuves et métriques du moteur. Une demande en langage naturel peut être interprétée séparément; le code vérifie le profil, l'actif et le pourcentage explicite avant d'afficher les paramètres à confirmer. Les questions de suivi utilisent le scénario et les preuves actuellement affichés.
+
+Par défaut, le service utilise le profil d'inférence `us.anthropic.claude-opus-5-5`; `BEDROCK_MODEL_ID` permet de le remplacer. Si Bedrock ou l'authentification AWS est indisponible, le service conserve les calculs et les contrôles avec le statut `partial`, et indique la cause détectée lorsqu'elle est connue. Il ne présente pas un texte de remplacement comme une réponse du modèle. La comparaison A/B exécute deux analyses indépendantes du même actif et bloque l'affichage si leurs dates ne correspondent pas.
 
 Diagnostic de l'accès AWS : voir [docs/aws_bedrock_diagnostic.md](docs/aws_bedrock_diagnostic.md).
 
 ---
 
-## Interface
+## Application web React et API FastAPI
 
-L'interface Streamlit (`app.py`, styles dans `styles/style.css`) permet de simuler l'ajout d'un actif au portefeuille fictif d'un persona et de lire les résultats sans passer par la ligne de commande. Elle appelle `agent.service.analyze_request`, qui orchestre le moteur, les contrôles du profil et l'explication Bedrock validée.
+L'entrée principale documentée est désormais une application React + TypeScript
+dans `frontend/`, reliée à l'API FastAPI de `api/`. Le navigateur ne lit jamais
+les fichiers de marché et ne reçoit aucune clé AWS : tous les calculs, contrôles
+et appels Bedrock restent côté Python.
+
+Prérequis : Python 3.12+, Node.js 20+ et npm.
+
+```powershell
+# Terminal 1 — API
+py -3.12 -m pip install -e .
+$env:BEDROCK_MODEL_ID = "us.anthropic.claude-opus-5-5"
+py -3.12 -m uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+
+# Terminal 2 — frontend
+Set-Location frontend
+npm install
+npm run dev
+```
+
+Ouvrir <http://localhost:5173>. Vite relaie `/api` vers
+`http://127.0.0.1:8000`. Pour une API différente, définir `VITE_API_URL` avant
+de démarrer Vite. Les requêtes longues affichent un état de chargement et une
+réponse devenue obsolète est ignorée si le scénario change entre-temps.
+
+Sans Bedrock, définir `$env:BEDROCK_MODEL_ID = ""` avant de lancer l'API. Les
+calculs et contrôles déterministes restent disponibles avec le statut `partial`;
+l'interface indique alors que l'explication IA est indisponible.
+
+Les réponses nécessaires aux questions de suivi sont conservées dans la mémoire
+du processus API pendant une heure, avec un maximum de 100 entrées. Elles sont
+perdues au redémarrage. Ce stockage convient à la démonstration locale avec un
+seul processus, pas à un déploiement multi-instance.
+
+Le parcours React comprend une vue d'ensemble, les profils fictifs, la simulation,
+la cohérence, l'assistant, les scénarios enregistrés et les sources. Aucune
+analyse n'est lancée avant une action explicite. Les questions de l'assistant
+sont indépendantes et liées à une analyse précise; aucun historique de chat
+n'est transmis. Les scénarios enregistrés sont conservés dans le `localStorage`
+de cet appareil et contiennent les paramètres et la date d'enregistrement, pas
+un instantané des résultats historiques. La résolution des preuves de l'analyse
+utilise le cache mémoire API et devient indisponible après son expiration.
+
+Vérifications frontend :
+
+```powershell
+Set-Location frontend
+npm test
+npm run typecheck
+npm run lint
+npm run build
+```
+
+### Interface Streamlit historique
+
+L'interface Streamlit (`app.py`, styles dans `styles/style.css`) guide l'utilisateur à travers trois étapes : choisir un personnage fictif, décrire un ajout d'actif, puis comprendre les résultats calculés. Les cartes des profils reprennent uniquement les objectifs, horizons et préférences documentés. Les autres paramètres sont modifiables depuis l'interface.
+
+Les profils et portefeuilles fournis dans le dépôt sont des données de démonstration; les prix historiques proviennent des fichiers de marché du projet. L'application n'exécute aucune transaction. À la demande explicite de l'utilisateur, elle appelle le service AlphaForge; celui-ci utilise Bedrock Converse avec le profil par défaut documenté ou l'identifiant défini par `BEDROCK_MODEL_ID`. Des identifiants AWS valides et actifs restent nécessaires. Les réponses simulées sont réservées aux tests; elles ne sont pas utilisées par l'application.
 
 ### Lancement
 
@@ -247,8 +307,8 @@ python -m streamlit run app.py
 
 Sous Windows, remplacer `python` par `py -3`.
 
-Le terminal doit contenir les identifiants temporaires AWS Workshop Studio et
-la configuration non secrète suivante :
+Le terminal doit contenir les identifiants temporaires AWS Workshop Studio.
+Le profil d'inférence est déjà configuré par défaut. Pour en choisir un autre :
 
 ```powershell
 $env:BEDROCK_MODEL_ID = "us.anthropic.claude-opus-5-5"
@@ -256,39 +316,42 @@ python -m streamlit run app.py
 ```
 
 La région utilisée par le service est `us-east-1`. L'interface ne demande et
-n'enregistre aucune clé AWS.
+n'enregistre aucune clé AWS. Si l'accès AWS n'est pas authentifié, l'application
+indique que les identifiants doivent être renouvelés ou configurés.
 
 Streamlit affiche l'adresse de l'application dans le terminal, par défaut <http://localhost:8501>, et ouvre normalement le navigateur automatiquement. Pour arrêter l'application, appuyer sur `Ctrl+C` dans le terminal. Après une modification de `app.py` ou de `styles/style.css`, il suffit de recharger la page; une modification de `.streamlit/config.toml` demande de relancer l'application.
 
 ### Parcours utilisateur
 
-1. **Choisir le thème (facultatif).** Le sélecteur en haut de la page permet de passer de l'affichage Clair à l'affichage Sombre.
+1. **Choisir le thème (facultatif).** Le sélecteur dans la barre latérale permet de passer de l'affichage Clair à l'affichage Sombre.
 
-2. **Choisir un persona.** Dans la liste « Choisissez un persona », sélectionner Amira, Mateo ou Robert. La page affiche son objectif, son horizon de placement, ses préférences, les informations inconnues à son sujet et son portefeuille fictif initial (actifs et pondérations).
+2. **Choisir une situation fictive.** Choisir la carte d'Amira, Mateo ou Robert. La carte résume son objectif, son horizon et ses préférences documentés; la barre latérale donne accès au portefeuille fictif initial. La saisie en langage naturel est facultative.
 
-3. **Ajouter un actif.** Dans le formulaire :
-   - « Actif à ajouter » : choisir un actif de `data/market/assets_universe.csv` que le persona ne détient pas déjà. Un actif est proposé par défaut, selon le scénario de référence de `data/scenarios.json`;
-   - « Poids cible (%) » : régler le poids de l'actif ajouté, de 1 % à 50 % par pas de 0,5 %. Ce poids est financé par une réduction proportionnelle des positions existantes.
+3. **Décrire le changement.**
+   - « Actif » : choisir un actif de `data/market/assets_universe.csv` que le persona ne détient pas déjà. Un actif est proposé par défaut, selon le scénario de référence de `data/scenarios.json`;
+   - « Part du portefeuille (%) » : régler le poids de l'actif ajouté, de 1 % à 50 % par pas de 0,5 %. Ce poids est financé par une réduction proportionnelle des positions existantes;
+   - l'aperçu du scénario affiche le nom complet et le symbole avant calcul. Pour une demande en langage naturel, les paramètres compris doivent être vérifiés avant de cliquer sur « Analyser le scénario ».
 
-4. **Lancer l'analyse.** Cliquer sur « Analyser le changement ». Un seul appel au service orchestre la simulation historique, les contrôles et l'explication Bedrock.
+4. **Lancer l'analyse.** Cliquer sur « Analyser le scénario ». Un seul appel au service orchestre la simulation historique, les contrôles et l'explication Bedrock.
 
-5. **Lire les résultats**, dans l'ordre où ils apparaissent :
-   - **Période et données** : dates de début et de fin, nombre de dates communes et devise (CAD);
-   - **Indicateurs** : rendement total, volatilité annualisée et baisse maximale après scénario, avec l'écart par rapport au portefeuille initial en points de pourcentage, puis un tableau Avant / Après / Écart;
-   - **Pondérations avant et après** : poids de chaque actif et variation en points;
-   - **Évolution historique (base 100)** : courbes du portefeuille initial et du portefeuille après scénario, normalisées à 100 à la première date commune;
-   - **Explication et alertes** : explication structurée et validée produite par Bedrock, lorsqu'elle est disponible;
-   - **Contrôles du profil** : constats comparant le scénario au profil du persona. Un avertissement signale une tension, un message de succès une cohérence, et un message d'information un point à vérifier ou une information insuffisante. Les informations manquantes sont indiquées sous chaque constat, et les preuves examinées se consultent dans la section dépliable associée;
-   - **Méthode, sources et limites** : section dépliable qui décrit la méthode de simulation, l'alignement des calendriers, la conversion des devises, les sources de données et les limites de l'analyse.
+5. **Lire le rapport** :
+   - **Scénario analysé** : nom complet de l'actif, poids ajouté, réduction proportionnelle des autres placements, dates en français et résultats en dollars canadiens;
+   - les trois **comparaisons avant/après** et la **courbe historique** dans la zone principale;
+   - **L'éclairage de l'agent** : compromis relié au profil, constats et informations manquantes;
+   - **Ce qui change** : accès aux pondérations détaillées;
+   - **Comprendre le calcul** et **Consulter les sources** : sections repliées;
+   - **Mode technique** (désactivé par défaut) : preuves, valeurs brutes, contrôles individuels, données et traces destinés à l'équipe et au jury.
 
-6. **Explorer d'autres scénarios.** Modifier l'actif ou le poids, ou changer de persona, puis relancer explicitement l'analyse. Le dernier résultat reste en session lors d'un changement de thème ou d'un rerun et aucun nouvel appel AWS n'est effectué sans soumission. Si le formulaire diffère de la demande conservée, l'interface le signale.
+6. **Comparer ou approfondir.** Comparer deux poids du même actif sur les mêmes dates, ou poser une question liée au rapport. Une question qui propose un autre pourcentage doit passer par l'interprétation, puis un nouveau calcul explicite; le modèle n'est pas autorisé à estimer le résultat.
+
+7. **Explorer d'autres scénarios.** Modifier l'actif, le poids ou le personnage, puis relancer explicitement l'analyse. Le dernier résultat reste en session lors d'un changement de thème ou d'un rerun; aucun nouvel appel AWS n'est effectué sans action explicite. Si les paramètres changent, l'ancien rapport est masqué jusqu'au nouveau calcul.
 
 ### Ce que l'interface affiche et ne fait pas
 
-- En état `success`, l'explication affichée provient de Bedrock et a passé les validations de références, de contrôles et de structure de l'application.
-- En état `partial`, les calculs et contrôles disponibles restent affichés, avec les avertissements, mais aucune explication locale n'est présentée comme une réponse de Claude.
-- En état `error`, le code et le message d'erreur sont affichés sans transformer un ancien résultat en nouvelle réussite.
-- Tous les chiffres proviennent du moteur de simulation. L'interface ne fait que les mettre en forme.
+- En état `success`, la synthèse qualitative de Bedrock n'est affichée que si elle ne contient ni décimales brutes ni identifiants internes; les comparaisons chiffrées proviennent des métriques validées du moteur.
+- En état `partial`, les calculs et contrôles disponibles restent affichés avec un résumé qualitatif dérivé des résultats structurés; aucune réponse locale n'est présentée comme une réponse de Claude.
+- En état `error`, le rapport affiche une explication accessible; le code et les détails ne sont accessibles qu'en mode technique.
+- Les chiffres proviennent du moteur de simulation. L'interface ne fait que les mettre en forme.
 - Les résultats décrivent une période historique simulée; ils ne préjugent pas des résultats futurs. Aucune transaction n'est exécutée.
 
 ### Thèmes
@@ -297,7 +360,28 @@ Les thèmes Clair et Sombre sont définis dans `app.py` (dictionnaire `THEMES`, 
 
 ### Captures d'écran et démonstration
 
-> _À ajouter : captures d'écran de l'interface (choix du persona, formulaire, résultats, contrôles du profil) et lien vers la vidéo de démonstration._
+#### Parcours oral de 3 à 5 minutes
+
+1. **Le problème (30 s)** — Les chiffres d'un portefeuille ne suffisent pas à expliquer les compromis et les inconnues.
+2. **Amira (45 s)** — Choisir sa carte et saisir « Pour Amira, tester 15 % de NVIDIA ». Montrer les paramètres compris avant de lancer l'analyse.
+3. **Résultat calculé (60 s)** — Montrer les trois comparaisons historiques, la courbe, le lien avec l'objectif de croissance et l'exposition indirecte aux FNB qui reste inconnue.
+4. **Variante A/B (45 s)** — Comparer deux poids du même actif; vérifier que la période commune est affichée et que les résultats changent.
+5. **Question de suivi (45 s)** — Demander « Et avec 5 % ? », vérifier la variante comprise, l'appliquer et relancer explicitement le moteur.
+6. **Autre profil et limites (45 s)** — Choisir Robert avec TSLA, puis rappeler qu'il s'agit d'une simulation historique, sans frais, sans prévision et sans transaction réelle. Montrer les sources et, brièvement, le mode technique.
+
+#### Mode de secours sans AWS
+
+Depuis un terminal PowerShell, sans identifiants AWS, désactivez explicitement
+Bedrock pour ce lancement :
+
+```powershell
+$env:BEDROCK_MODEL_ID = ""
+python -m streamlit run app.py
+```
+
+Le moteur local conserve les résultats et les contrôles avec le statut `partial`. La compréhension du langage naturel et les réponses Bedrock de suivi sont signalées indisponibles; sélectionner le personnage, l'actif et le poids manuellement. Ne pas présenter cette démonstration hors ligne comme une réponse du modèle. La comparaison A/B fonctionne localement et affiche ses calculs sur une période identique.
+
+Les captures d'écran et la vidéo officielle de démonstration restent à produire.
 
 ---
 

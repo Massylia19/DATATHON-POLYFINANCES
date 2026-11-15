@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from botocore.exceptions import EndpointConnectionError
 
-from agent.service import analyze_request
+from agent.service import DEFAULT_MODEL_ID, analyze_request
 from agent.demo import _print_result
 from agent.context import create_request_context
 from agent.evidence import build_evidence_bundle
@@ -205,7 +205,8 @@ class AgentServiceTests(unittest.TestCase):
                 valid = valid_explanation_for(
                     persona_id, request["symbol"], request["target_weight_pct"]
                 )
-                self.assertIn("CAD", valid["summary"])
+                self.assertNotIn("CAD", valid["summary"])
+                self.assertGreaterEqual(valid["summary"].count("."), 2)
                 self.assertNotIn(
                     "analysis.currency",
                     [
@@ -701,15 +702,28 @@ class AgentServiceTests(unittest.TestCase):
             ["bedrock_tool_request", "local_fallback"],
         )
 
-    def test_missing_model_configuration_is_explicit_and_does_not_call_client(self):
-        client = FakeConverseClient([])
+    def test_default_model_is_used_when_no_override_is_configured(self):
+        client = FakeConverseClient(sequential_success_responses())
         with patch.dict(os.environ, {}, clear=True):
             result = analyze_request(
                 "amira", "NVDA", 10, client=client, root=ROOT
             )
 
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(client.calls)
+        self.assertEqual(
+            {call["modelId"] for call in client.calls}, {DEFAULT_MODEL_ID}
+        )
+
+    def test_empty_model_setting_disables_bedrock_without_calling_client(self):
+        client = FakeConverseClient([])
+        with patch.dict(os.environ, {"BEDROCK_MODEL_ID": ""}, clear=True):
+            result = analyze_request(
+                "amira", "NVDA", 10, client=client, root=ROOT
+            )
+
         self.assertEqual(result["status"], "partial")
-        self.assertIn("BEDROCK_MODEL_ID", " ".join(result["warnings"]))
+        self.assertIn("désactivé explicitement", " ".join(result["warnings"]))
         self.assertEqual(client.calls, [])
 
     def test_input_validation_happens_before_aws(self):

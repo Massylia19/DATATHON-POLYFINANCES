@@ -53,6 +53,7 @@ class ProfileCheckTests(unittest.TestCase):
         for evidence in finding["evidence"]["assessed_evidence"]:
             self.assertTrue(evidence["valid_date"])
             self.assertTrue(evidence["id"])
+            self.assertTrue(evidence["title"])
 
     def test_robert_status_is_derived_from_metrics(self):
         profile, _portfolio, scenario = load_case(ROOT / "data", "robert")

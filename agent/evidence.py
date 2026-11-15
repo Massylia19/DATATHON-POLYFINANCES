@@ -192,11 +192,11 @@ def _example_explanation(context: RequestContext) -> dict[str, Any] | None:
             for item in check.get("missing_information", [])
         )
     )
-    currency = context.analysis.get("currency", "CAD")
     return {
         "summary": (
-            f"Comparaison historique hypothétique en {currency}, sur la période "
-            "commune du moteur, avant et après le scénario."
+            "Cette simulation compare le portefeuille avant et après l’ajout. "
+            "Elle met en évidence les changements historiques et les limites "
+            "importantes pour interpréter le résultat."
         ),
         "changes": [
             {
