@@ -265,12 +265,11 @@ hr {
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
-/* Titres en serif : l'allure classique des institutions financières */
 [data-testid="stAppViewContainer"] h1,
 [data-testid="stAppViewContainer"] h2,
 [data-testid="stAppViewContainer"] h3,
 [data-testid="stAppViewContainer"] h4 {
-    font-family: Georgia, "Times New Roman", serif;
+    font-family: "Inter", "Segoe UI", system-ui, sans-serif;
     font-weight: 600;
     letter-spacing: 0;
     font-variant-numeric: lining-nums;
@@ -466,43 +465,6 @@ section[data-testid="stSidebar"] h2::before {
     transform: rotate(-25deg);
 }
 
-.af-nav {
-    display: grid;
-    gap: 0.3rem;
-    margin: 1rem 0 1.15rem;
-}
-
-.af-nav a {
-    display: flex;
-    align-items: center;
-    padding: 0.58rem 0.62rem;
-    border-radius: 8px;
-    color: var(--text-color);
-    font-size: 0.84rem;
-    text-decoration: none;
-}
-
-.af-nav a::before {
-    width: 0.38rem;
-    height: 0.38rem;
-    margin-right: 0.62rem;
-    border: 1px solid var(--secondary-text);
-    border-radius: 50%;
-    content: "";
-}
-
-.af-nav a:hover,
-.af-nav a.active {
-    background: var(--surface-bg);
-    color: var(--accent);
-    text-decoration: none;
-}
-
-.af-nav a.active::before {
-    border-color: var(--accent);
-    background: var(--accent);
-}
-
 .af-badge {
     display: inline-block;
     margin-top: 0.15rem;
@@ -582,6 +544,16 @@ section[data-testid="stSidebar"] h2::before {
     border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 700;
+}
+
+.stButton button[kind="secondary"] {
+    background: transparent;
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+.stButton button[kind="secondary"] p {
+    color: var(--text-color);
 }
 
 [data-baseweb="select"] > div,

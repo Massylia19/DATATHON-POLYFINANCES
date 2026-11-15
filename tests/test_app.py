@@ -129,7 +129,20 @@ def rendered_text(app):
 
 class StreamlitAppTests(unittest.TestCase):
     def app(self):
+        app = AppTest.from_file(str(PROJECT_ROOT / "app.py"), default_timeout=60)
+        app.run()
+        app.switch_page("ui/simulation.py").run()
+        return app
+
+    def home_app(self):
         return AppTest.from_file(str(PROJECT_ROOT / "app.py"), default_timeout=60)
+
+    def test_home_can_open_simulation_without_calling_bedrock(self):
+        with patch("agent.service.analyze_request") as service:
+            app = self.home_app().run()
+            self.click_button(app, "Commencer une simulation")
+            service.assert_not_called()
+            self.assertIn("Testez une idée. Comprenez ses effets.", rendered_text(app))
 
     def click_button(self, app, label):
         matching = [button for button in app.button if button.label == label]
@@ -137,7 +150,7 @@ class StreamlitAppTests(unittest.TestCase):
         matching[0].click().run()
 
     def test_branding_identifies_agent_instead_of_mock_data(self):
-        app = self.app().run()
+        app = self.home_app().run()
         text = rendered_text(app)
 
         self.assertIn("Simulation fictive · aucune transaction réelle.", text)
@@ -146,7 +159,7 @@ class StreamlitAppTests(unittest.TestCase):
     def run_scenario(self, persona_name, symbol, weight):
         app = self.app().run()
         if persona_name != "Amira":
-            self.click_button(app, f"Choisir {persona_name}")
+            app.radio[0].set_value(persona_name.lower()).run()
         app.selectbox[0].set_value(symbol)
         app.slider[0].set_value(float(weight))
         self.click_button(app, "Analyser le scénario")
@@ -183,7 +196,7 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertTrue(
                 any("mêmes dates" in item.value for item in app.caption)
             )
-            app.radio[0].set_value("Clair").run()
+            app.run()
             self.assertEqual(service.call_count, 1)
 
     def test_natural_language_parameters_require_a_separate_analysis_click(self):
@@ -268,7 +281,7 @@ class StreamlitAppTests(unittest.TestCase):
             answer.assert_called_once()
             service.assert_called_once_with("amira", "NVDA", 10.0)
             self.assertIn("ne prédisent pas une perte future", rendered_text(app))
-            app.radio[0].set_value("Clair").run()
+            app.run()
             self.assertEqual(answer.call_count, 1)
             self.assertEqual(service.call_count, 1)
 
@@ -277,7 +290,7 @@ class StreamlitAppTests(unittest.TestCase):
             service.return_value = response_for()
             app = self.run_scenario("Amira", "NVDA", 10)
             page_text = rendered_text(app)
-            self.assertEqual(len(app.metric), 3)
+            self.assertEqual(len(app.metric), 0)
 
             for heading in (
                 "Scénario analysé",
@@ -300,10 +313,12 @@ class StreamlitAppTests(unittest.TestCase):
                 "fluctué et sa plus forte baisse a été plus importante.",
                 page_text,
             )
-            self.assertIn("73,67 % avant / 118,62 % après", page_text)
-            self.assertIn("21,80 % avant / 25,60 % après", page_text)
-            self.assertIn("−38,64 % avant / −40,04 % après", page_text)
-            self.assertEqual(page_text.count("73,67 % avant / 118,62 % après"), 1)
+            self.assertIn("73,67 %", page_text)
+            self.assertIn("118,62 %", page_text)
+            self.assertIn("21,80 %", page_text)
+            self.assertIn("25,60 %", page_text)
+            self.assertIn("−38,64 %", page_text)
+            self.assertIn("−40,04 %", page_text)
             self.assertEqual(page_text.count("Gain sur la période"), 1)
             self.assertIn(
                 "Nous ne savons pas quelle part de NVIDIA est déjà détenue à "
@@ -346,8 +361,8 @@ class StreamlitAppTests(unittest.TestCase):
             service.return_value = response_for(status="partial")
             partial = self.run_scenario("Amira", "NVDA", 10)
             self.assertTrue(any("calculs sont disponibles" in item.value for item in partial.warning))
-            self.assertEqual(partial.metric[0].label, "Gain sur la période")
-            self.assertEqual(len(partial.metric), 3)
+            self.assertIn("Gain sur la période", rendered_text(partial))
+            self.assertEqual(len(partial.metric), 0)
             self.assertFalse(any("rapport est prêt" in item.value for item in partial.success))
 
         with patch("agent.service.analyze_request") as service:
@@ -411,11 +426,11 @@ class StreamlitAppTests(unittest.TestCase):
             service.return_value = response_for()
             app = self.app().run()
             self.click_button(app, "Analyser le scénario")
-            app.radio[0].set_value("Clair").run()
+            app.run()
             self.assertFalse(app.exception)
             self.assertEqual(service.call_count, 1)
             self.assertIn("NVIDIA", rendered_text(app))
-            self.assertEqual(len(app.metric), 3)
+            self.assertEqual(len(app.metric), 0)
 
     def test_sources_keep_titles_links_and_french_dates(self):
         with patch("agent.service.analyze_request") as service:
@@ -454,9 +469,8 @@ class StreamlitAppTests(unittest.TestCase):
                 "NVDA",
                 10.0,
                 (
-                    "73,67 % avant / 118,62 % après",
-                    "21,80 % avant / 25,60 % après",
-                    "−38,64 % avant / −40,04 % après",
+                    "73,67 %", "118,62 %", "21,80 %",
+                    "25,60 %", "−38,64 %", "−40,04 %",
                 ),
             ),
             (
@@ -465,9 +479,8 @@ class StreamlitAppTests(unittest.TestCase):
                 "AAPL",
                 32.5,
                 (
-                    "66,21 % avant / 101,57 % après",
-                    "9,65 % avant / 14,70 % après",
-                    "−16,21 % avant / −18,91 % après",
+                    "66,21 %", "101,57 %", "9,65 %",
+                    "14,70 %", "−16,21 %", "−18,91 %",
                 ),
             ),
             (
@@ -476,9 +489,8 @@ class StreamlitAppTests(unittest.TestCase):
                 "TSLA",
                 5.0,
                 (
-                    "41,46 % avant / 40,93 % après",
-                    "6,15 % avant / 6,74 % après",
-                    "−7,33 % avant / −8,30 % après",
+                    "41,46 %", "40,93 %", "6,15 %",
+                    "6,74 %", "−7,33 %", "−8,30 %",
                 ),
             ),
         ]
@@ -503,7 +515,7 @@ class StreamlitAppTests(unittest.TestCase):
         with patch("agent.service.analyze_request", side_effect=fake_service) as service:
             app = self.app().run()
             self.click_button(app, "Analyser le scénario")
-            self.click_button(app, "Choisir Robert")
+            app.radio[0].set_value("robert").run()
             self.assertEqual(service.call_count, 1)
             self.assertTrue(any("rapport précédent" in item.value for item in app.warning))
             self.assertFalse(any(item.label == "Gain sur la période" for item in app.metric))
