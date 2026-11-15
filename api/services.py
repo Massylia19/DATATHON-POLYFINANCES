@@ -11,6 +11,7 @@ from agent.context import create_request_context
 from agent.evidence import build_public_evidence_catalog, resolve_evidence_reference
 from agent.service import (
     analyze_comparison,
+    analyze_custom_portfolio,
     analyze_request,
     answer_follow_up,
     interpret_scenario_request,
@@ -63,6 +64,18 @@ def run_comparison(payload: dict[str, Any]) -> dict[str, Any]:
             }
             for index, variant in enumerate(result["variants"])
         ]
+    return result
+
+
+def run_custom_portfolio(payload: dict[str, Any]) -> dict[str, Any]:
+    """Analyse un portefeuille personnalisé avec modifications multiples."""
+    result = analyze_custom_portfolio(
+        persona_id=payload["persona_id"],
+        custom_weights=payload["weights"],
+        root=ROOT
+    )
+    if result.get("status") == "success":
+        return enrich_analysis_response(result)
     return result
 
 

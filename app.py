@@ -25,6 +25,7 @@ page = st.navigation(
     [
         st.Page(render_home, title="Accueil", icon=":material/home:", default=True, url_path=""),
         st.Page("ui/simulation.py", title="Simulation", icon=":material/science:", url_path="simulation"),
+        st.Page("ui/portfolio_editor.py", title="Éditeur de portefeuille", icon=":material/edit:", url_path="portfolio-editor"),
     ],
     position="sidebar",
 )

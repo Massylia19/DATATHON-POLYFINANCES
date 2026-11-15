@@ -1306,3 +1306,151 @@ def answer_follow_up(
         "evidence_refs": list(dict.fromkeys(references)),
         "origin": "bedrock_converse",
     }
+
+
+def analyze_custom_portfolio(
+    persona_id: str,
+    custom_weights: dict[str, float],
+    *,
+    root: Path = PROJECT_ROOT,
+) -> dict[str, Any]:
+    """Analyse un portefeuille personnalisé avec plusieurs modifications.
+
+    Args:
+        persona_id: L'identifiant du persona
+        custom_weights: Dictionnaire {symbol: weight_pct} pour le nouveau portefeuille
+        root: Racine du projet
+
+    Returns:
+        Dictionnaire contenant l'analyse comparative avant/après
+    """
+    from alphaforge.engine import (
+        load_persona_and_portfolio,
+        load_asset_universe,
+        load_fx_usdcad,
+        load_prices_in_cad,
+        align_on_common_dates,
+        simulate_buy_and_hold,
+        calculate_metrics,
+        aggregate_weights_by_class,
+        load_sources,
+        team_sources,
+        _weight_map,
+    )
+
+    try:
+        # Charger les données du persona et du portefeuille initial
+        persona, initial_portfolio = load_persona_and_portfolio(root / "data", persona_id)
+
+        # Valider que les poids totalisent 100%
+        total_weight = sum(custom_weights.values())
+        if not math.isclose(total_weight, 100.0, abs_tol=1e-6):
+            return _error_response(
+                "INVALID_WEIGHTS",
+                f"Les poids doivent totaliser 100%, reçu {total_weight:.2f}%"
+            )
+
+        # Valider que tous les symboles existent
+        assets = load_asset_universe(root / "data" / "market" / "assets_universe.csv")
+        for symbol in custom_weights:
+            if symbol not in assets:
+                return _error_response(
+                    "UNKNOWN_SYMBOL",
+                    f"Symbole inconnu: {symbol}"
+                )
+
+        # Créer le portefeuille modifié
+        modified_portfolio = {
+            "persona_id": persona_id,
+            "positions": [
+                {"symbol": symbol, "weight_pct": weight}
+                for symbol, weight in custom_weights.items()
+            ]
+        }
+
+        # Obtenir les poids des deux portefeuilles
+        before_weights = _weight_map(initial_portfolio)
+        after_weights = custom_weights
+        all_symbols = sorted(set(before_weights) | set(after_weights))
+
+        # Charger les données de marché
+        dataset_dir = root / "data" / "market"
+        fx_dates, fx_rates = load_fx_usdcad(dataset_dir / "fx_usdcad_daily.csv")
+        raw_series = load_prices_in_cad(
+            dataset_dir / "prices_daily.csv",
+            all_symbols,
+            assets,
+            fx_dates,
+            fx_rates,
+        )
+        dates, prices = align_on_common_dates(raw_series)
+
+        # Simuler les deux portefeuilles
+        before_values = simulate_buy_and_hold(before_weights, prices)
+        after_values = simulate_buy_and_hold(after_weights, prices)
+        before_metrics = calculate_metrics(before_values)
+        after_metrics = calculate_metrics(after_values)
+
+        # Calculer les deltas
+        def _rounded(value: float) -> float:
+            if abs(value) < 1e-6:
+                return 0.0
+            return round(value, 6)
+
+        metric_deltas = {
+            metric: _rounded(after_metrics[metric] - before_metrics[metric])
+            for metric in before_metrics
+        }
+
+        return {
+            "status": "success",
+            "analysis_type": "custom_portfolio_comparison",
+            "persona": deepcopy(persona),
+            "scenario": {
+                "scenario_id": f"{persona_id}_custom_portfolio",
+                "description": "Portefeuille personnalisé avec modifications multiples",
+                "modification_type": "custom_weights",
+            },
+            "period": {
+                "start": dates[0].isoformat(),
+                "end": dates[-1].isoformat(),
+                "common_observations": len(dates),
+            },
+            "currency": "CAD",
+            "methodology": {
+                "price_field": "adj_close",
+                "fx_conversion": "Prix USD multiplié par USD/CAD (CAD pour 1 USD); dernier taux connu reporté si absent.",
+                "calendar_alignment": "Intersection stricte des dates ayant un prix pour tous les actifs avant et après.",
+                "simulation": "Achat aux pondérations initiales, quantités fixes, distributions reflétées par adj_close, aucun rééquilibrage périodique.",
+                "volatility": "Écart-type échantillonnal des rendements entre observations communes, annualisé avec sqrt(252).",
+                "series_base": "Les courbes valent 100 à la première date commune et représentent la valeur du portefeuille simulé.",
+            },
+            "series": {
+                "dates": [current_date.isoformat() for current_date in dates],
+                "before": [value * 100.0 for value in before_values],
+                "after": [value * 100.0 for value in after_values],
+            },
+            "before": {
+                "weights_by_asset_pct": before_weights,
+                "weights_by_class_pct": aggregate_weights_by_class(before_weights, assets),
+                "metrics": {key: _rounded(value) for key, value in before_metrics.items()},
+            },
+            "after": {
+                "weights_by_asset_pct": after_weights,
+                "weights_by_class_pct": aggregate_weights_by_class(after_weights, assets),
+                "metrics": {key: _rounded(value) for key, value in after_metrics.items()},
+            },
+            "delta_after_minus_before": {
+                "metrics": metric_deltas,
+                "weights_by_asset_pct": {
+                    symbol: _rounded(after_weights.get(symbol, 0.0) - before_weights.get(symbol, 0.0))
+                    for symbol in all_symbols
+                },
+            },
+            "sources": load_sources(dataset_dir / "sources_metadata.csv") + team_sources(),
+        }
+
+    except EngineError as exc:
+        return _error_response(exc.code, exc.message)
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        return _error_response("INTERNAL_ERROR", str(exc))

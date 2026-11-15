@@ -100,3 +100,30 @@ class EvidenceRequest(StrictModel):
         if any(not value.startswith(("analysis.", "source.")) for value in values):
             raise ValueError("Seules les preuves publiques peuvent être consultées.")
         return list(dict.fromkeys(values))
+
+
+class CustomPortfolioRequest(StrictModel):
+    persona_id: PersonaId
+    weights: dict[str, float] = Field(min_length=1, max_length=50)
+
+    @field_validator("weights")
+    @classmethod
+    def validate_weights(cls, values: dict[str, float]) -> dict[str, float]:
+        # Valider que les symboles sont valides
+        normalized = {}
+        for symbol, weight in values.items():
+            if not isinstance(symbol, str) or not symbol.strip():
+                raise ValueError("Les symboles doivent être des textes non vides.")
+            normalized_symbol = symbol.strip().upper()
+            if weight < 0 or weight > 100:
+                raise ValueError(f"Le poids de {normalized_symbol} doit être entre 0 et 100.")
+            if not math.isfinite(weight):
+                raise ValueError(f"Le poids de {normalized_symbol} doit être fini.")
+            normalized[normalized_symbol] = weight
+
+        # Valider que le total est proche de 100%
+        total = sum(normalized.values())
+        if not math.isclose(total, 100.0, abs_tol=1e-6):
+            raise ValueError(f"Les poids doivent totaliser 100%, reçu {total:.2f}%.")
+
+        return normalized

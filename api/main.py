@@ -11,6 +11,7 @@ from .analysis_store import AnalysisStore
 from .schemas import (
     AnalysisRequest,
     ComparisonRequest,
+    CustomPortfolioRequest,
     EvidenceRequest,
     FollowUpRequest,
     InterpretRequest,
@@ -22,6 +23,7 @@ from .services import (
     resolve_public_evidence,
     run_analysis,
     run_comparison,
+    run_custom_portfolio,
 )
 
 app = FastAPI(title="AlphaForge API", version="1.0.0")
@@ -67,6 +69,14 @@ def create_analysis(payload: AnalysisRequest) -> dict[str, Any]:
 @app.post("/api/comparisons")
 def create_comparison(payload: ComparisonRequest) -> dict[str, Any]:
     result = run_comparison(payload.model_dump())
+    if result.get("status") == "error":
+        raise HTTPException(status_code=_http_status(result), detail=result["error"])
+    return result
+
+
+@app.post("/api/custom-portfolio")
+def create_custom_portfolio_analysis(payload: CustomPortfolioRequest) -> dict[str, Any]:
+    result = run_custom_portfolio(payload.model_dump())
     if result.get("status") == "error":
         raise HTTPException(status_code=_http_status(result), detail=result["error"])
     return result
