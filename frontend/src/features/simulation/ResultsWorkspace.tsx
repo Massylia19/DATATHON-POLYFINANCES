@@ -1,4 +1,8 @@
+import * as Tabs from "@radix-ui/react-tabs";
+import { AlertTriangle, ArrowLeft, BookOpen, CheckCircle2, ChevronDown, Code2, Database, ExternalLink, GitCompare, HelpCircle, LineChart, ListChecks, PieChart, ShieldCheck, Sparkles } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type {
   AnalysisResponse,
   Asset,
@@ -25,6 +29,12 @@ const sourceRoles: Record<string, string> = {
   src_portfolios: "Portefeuilles fictifs de démonstration",
 };
 
+const statusIcons: Record<ProfileCheck["status"], LucideIcon> = {
+  consistent: CheckCircle2,
+  tension: AlertTriangle,
+  insufficient_information: HelpCircle,
+};
+
 function EmptyResult({ stale }: { stale: boolean }) {
   return (
     <div className="empty main-empty">
@@ -44,14 +54,16 @@ export function SummaryPage({
   assets,
   onNavigate,
   onSave,
+  comparison,
 }: {
   result: AnalysisResponse | null;
   stale: boolean;
   assets: Asset[];
   onNavigate: (page: string) => void;
   onSave: (request: ScenarioRequest) => void;
+  comparison?: ReactNode;
 }) {
-  if (!result || stale) return <Card><EmptyResult stale={stale} /></Card>;
+  if (!result || stale) return <><Card><EmptyResult stale={stale} /></Card>{comparison}</>;
   const { analysis } = result;
   const addedAsset = assets.find(asset => asset.ticker === result.request.symbol);
   const before = analysis.before.metrics;
@@ -88,34 +100,58 @@ export function SummaryPage({
           <h3>Ce qu’il faut retenir</h3>
           <p>{result.presentation?.summary ?? result.explanation?.summary ?? "Les indicateurs montrent le compromis historique de cet ajout. Ils ne prédisent pas les résultats futurs."}</p>
         </section>
-        <HistoricalChart analysis={analysis} />
-        <details className="allocation-details">
-          <summary>Pondérations détaillées avant et après</summary>
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>Placement</th><th>Avant</th><th>Après</th></tr></thead>
-              <tbody>
-                {Object.keys({ ...analysis.before.weights_by_asset_pct, ...analysis.after.weights_by_asset_pct }).sort().map(symbol => (
-                  <tr key={symbol}>
-                    <td>{positionLabel(symbol, assets)}</td>
-                    <td>{formatWeight(analysis.before.weights_by_asset_pct[symbol] ?? 0)}</td>
-                    <td>{formatWeight(analysis.after.weights_by_asset_pct[symbol] ?? 0)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </details>
+        <Tabs.Root defaultValue="chart" className="result-tabs">
+          <Tabs.List className="tab-list" aria-label="Détails du résultat">
+            <Tabs.Trigger value="chart"><LineChart aria-hidden="true" />Graphique et pondérations</Tabs.Trigger>
+            <Tabs.Trigger value="variants"><GitCompare aria-hidden="true" />Comparer deux variantes</Tabs.Trigger>
+            <Tabs.Trigger value="technical"><Code2 aria-hidden="true" />Détails techniques</Tabs.Trigger>
+          </Tabs.List>
+          <Tabs.Content value="chart" forceMount className="tab-panel">
+        <div className="chart-weights">
+          <HistoricalChart analysis={analysis} />
+          <section className="weights-panel" aria-labelledby="weights-title">
+            <h3 id="weights-title"><PieChart aria-hidden="true" />Pondérations</h3>
+            <p className="chart-note">Avant → après l’ajout</p>
+            <ul className="weight-bars">
+              {Object.keys({ ...analysis.before.weights_by_asset_pct, ...analysis.after.weights_by_asset_pct })
+                .sort((a, b) => (analysis.after.weights_by_asset_pct[b] ?? 0) - (analysis.after.weights_by_asset_pct[a] ?? 0))
+                .map(symbol => {
+                  const beforeWeight = analysis.before.weights_by_asset_pct[symbol] ?? 0;
+                  const afterWeight = analysis.after.weights_by_asset_pct[symbol] ?? 0;
+                  const added = symbol === result.request.symbol;
+                  return (
+                    <li key={symbol} className={added ? "added" : undefined}>
+                      <div className="weight-line">
+                        <span className="weight-name" title={positionLabel(symbol, assets)}><b>{symbol}</b>{added && <em>nouveau</em>}</span>
+                        <span className="weight-values">
+                          {beforeWeight > 0 && <span className="weight-before">{formatWeight(beforeWeight)} → </span>}
+                          <strong>{formatWeight(afterWeight)}</strong>
+                        </span>
+                      </div>
+                      <div className="weight-track" aria-hidden="true">
+                        <i className="weight-fill-before" style={{ width: `${Math.min(beforeWeight, 100)}%` }} />
+                        <i className="weight-fill-after" style={{ width: `${Math.min(afterWeight, 100)}%` }} />
+                      </div>
+                    </li>
+                  );
+                })}
+            </ul>
+          </section>
+        </div>
+          </Tabs.Content>
+          <Tabs.Content value="variants" forceMount className="tab-panel">
+            {comparison}
+          </Tabs.Content>
+          <Tabs.Content value="technical" className="tab-panel technical-panel">
+            <p className="help">Chemins de preuve, avertissements et traces d’outils, pour l’équipe et le jury.</p>
+            <pre>{JSON.stringify({ warnings: result.warnings, explanation: result.explanation, tool_trace: result.tool_trace }, null, 2)}</pre>
+          </Tabs.Content>
+        </Tabs.Root>
         <nav className="result-links" aria-label="Approfondir cette simulation">
-          <button type="button" onClick={() => onNavigate("coherence")}>Examiner la cohérence du scénario <span>›</span></button>
-          <button type="button" onClick={() => onNavigate("sources")}>Consulter les preuves et les sources <span>›</span></button>
-          <button type="button" onClick={() => onNavigate("assistant")}>Poser une question sur ce résultat <span>›</span></button>
+          <button type="button" onClick={() => onNavigate("coherence")}><ShieldCheck aria-hidden="true" />Examiner la cohérence du scénario <span>›</span></button>
+          <button type="button" onClick={() => onNavigate("sources")}><BookOpen aria-hidden="true" />Consulter les preuves et les sources <span>›</span></button>
+          <button type="button" onClick={() => onNavigate("assistant")}><Sparkles aria-hidden="true" />Poser une question sur ce résultat <span>›</span></button>
         </nav>
-        <details className="technical-details">
-          <summary>Détails techniques pour l’équipe et le jury</summary>
-          <p>Les chemins de preuve, avertissements et traces d’outils ne sont affichés que dans ce mode.</p>
-          <pre>{JSON.stringify({ warnings: result.warnings, explanation: result.explanation, tool_trace: result.tool_trace }, null, 2)}</pre>
-        </details>
       </Card>
     </div>
   );
@@ -193,39 +229,56 @@ export function CoherencePage({
   const missing = formatMissingInformation(
     result.checks.flatMap(check => check.missing_information),
   );
+  const counts = {
+    consistent: result.checks.filter(check => check.status === "consistent").length,
+    tension: result.checks.filter(check => check.status === "tension").length,
+    insufficient_information: result.checks.filter(check => check.status === "insufficient_information").length,
+  };
   return (
     <Card className="coherence-page">
-      <ContextBar result={result} />
-      <h2>Cohérence du scénario</h2>
-      <p>
-        Nous comparons les caractéristiques observées de cette simulation avec
-        l’objectif déclaré du profil fictif de {persona}.
-      </p>
-      {result.checks.map((check: ProfileCheck) => (
-        <article className={`check-card ${check.status}`} key={check.id}>
-          <div className="check-card-heading">
-            <h3>{check.title}</h3>
-            <Badge className={`status-${check.status}`}>{checkStatusLabels[check.status]}</Badge>
-          </div>
-          <p>{check.message}</p>
-          <details>
-            <summary>Pourquoi ce constat ? Voir les éléments vérifiés</summary>
-            <EvidenceCards
-              key={`${result.analysis_id}:${check.evidence_refs.join("|")}`}
-              analysisId={result.analysis_id}
-              references={check.evidence_refs}
-            />
-          </details>
-        </article>
-      ))}
+      <div className="coherence-top">
+        <ContextBar result={result} />
+        <ul className="status-counts" aria-label="Résumé des contrôles">
+          <li className="count-consistent"><CheckCircle2 aria-hidden="true" />{counts.consistent} cohérent{counts.consistent > 1 ? "s" : ""}</li>
+          <li className="count-tension"><AlertTriangle aria-hidden="true" />{counts.tension} vigilance</li>
+          <li className="count-insufficient"><HelpCircle aria-hidden="true" />{counts.insufficient_information} insuffisant{counts.insufficient_information > 1 ? "s" : ""}</li>
+        </ul>
+      </div>
+      <p className="help">Contrôles comparés à l’objectif déclaré de {persona}. Cliquez sur un contrôle pour le détail.</p>
+      <div className="check-list">
+        {result.checks.map((check: ProfileCheck) => {
+          const StatusIcon = statusIcons[check.status];
+          return (
+            <details className={`check-card ${check.status}`} key={check.id}>
+              <summary className="check-card-heading">
+                <span className={`check-icon icon-${check.status}`} aria-hidden="true"><StatusIcon /></span>
+                <h3>{check.title}</h3>
+                <Badge className={`status-${check.status}`}>{checkStatusLabels[check.status]}</Badge>
+                <ChevronDown aria-hidden="true" className="check-chevron" />
+              </summary>
+              <div className="check-body">
+                <p>{check.message}</p>
+                <details className="evidence-toggle">
+                  <summary>Pourquoi ce constat ? Voir les éléments vérifiés</summary>
+                  <EvidenceCards
+                    key={`${result.analysis_id}:${check.evidence_refs.join("|")}`}
+                    analysisId={result.analysis_id}
+                    references={check.evidence_refs}
+                  />
+                </details>
+              </div>
+            </details>
+          );
+        })}
+      </div>
       <section className="unknowns-note">
-        <h3>Ce que les données ne permettent pas de conclure</h3>
+        <h3><AlertTriangle aria-hidden="true" className="inline-icon" />Ce que les données ne permettent pas de conclure</h3>
         {missing.length
           ? <ul>{missing.map(item => <li key={item}>{item}</li>)}</ul>
           : <p>Aucune information manquante supplémentaire n’a été signalée par ces contrôles.</p>}
       </section>
       <Button className="primary" type="button" onClick={() => onNavigate("simulation")}>
-        Revenir à la simulation
+        <ArrowLeft aria-hidden="true" />Revenir à la simulation
       </Button>
     </Card>
   );
@@ -258,55 +311,86 @@ export function SourcesPage({
   stale: boolean;
 }) {
   const analysis = result && !stale ? result.analysis : null;
+  const pending = stale
+    ? "Le résultat précédent ne correspond plus aux paramètres actuels. Relancez l’analyse pour consulter ses sources."
+    : "Disponible après le calcul d’un scénario.";
   return (
     <Card className="sources-page">
-      <h2>Sources et méthode</h2>
-      <p>
-        Les chiffres décrivent une simulation historique. Ils ne prédisent pas
-        les résultats futurs et ne constituent pas une recommandation.
-      </p>
-      <h3>Comment la comparaison est faite</h3>
-      <ul className="method-list">
-        <li>Les deux portefeuilles sont comparés sur les mêmes dates communes.</li>
-        <li>Les résultats sont exprimés en dollars canadiens.</li>
-        <li>Les placements sont conservés sans rééquilibrage périodique.</li>
-        <li>Les frais et les taxes ne sont pas inclus.</li>
-      </ul>
-      {analysis ? (
-        <>
-          <h3>Sources utilisées pour ce scénario</h3>
-          <div className="source-list">
-            {analysis.sources.map((source, index) => {
-              const id = String(source.id ?? "");
-              const sourceText = String(source.source ?? "Source non précisée");
-              const sourceUrl = typeof source.source_url === "string" && source.source_url.startsWith("https://")
-                ? source.source_url
-                : null;
-              const retrievedOn = typeof source.retrieved_on === "string" ? source.retrieved_on : null;
-              return (
-                <article className="source-card" key={id || index}>
-                  <h4>{sourceText}</h4>
-                  <p>{sourceRoles[id] ?? "Rôle : donnée de référence du projet"}</p>
-                  {retrievedOn && <p className="help">Donnée récupérée le {formatDate(retrievedOn)}</p>}
-                  {sourceUrl && <a href={sourceUrl} target="_blank" rel="noreferrer">Consulter le document original</a>}
-                </article>
-              );
-            })}
+      <p className="help">Simulation historique : elle ne prédit pas l’avenir et n’est pas une recommandation.</p>
+      <div className="accordion-list">
+        <details className="accordion-item">
+          <summary>
+            <span className="accordion-icon" aria-hidden="true"><ListChecks /></span>
+            <span className="accordion-title"><strong>Méthode de calcul</strong><span>Comment les deux portefeuilles sont comparés</span></span>
+            <span className="accordion-count">4</span>
+            <ChevronDown aria-hidden="true" className="check-chevron" />
+          </summary>
+          <div className="accordion-body">
+            <ul className="method-list">
+              <li>Les deux portefeuilles sont comparés sur les mêmes dates communes.</li>
+              <li>Les résultats sont exprimés en dollars canadiens.</li>
+              <li>Les placements sont conservés sans rééquilibrage périodique.</li>
+              <li>Les frais et les taxes ne sont pas inclus.</li>
+            </ul>
+            {analysis && (
+              <details className="technical-details">
+                <summary>Méthode technique</summary>
+                <pre>{JSON.stringify(analysis.methodology, null, 2)}</pre>
+              </details>
+            )}
           </div>
-          <h3>Limites de la simulation</h3>
-          <ul>{analysis.limitations.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>
-          <details className="technical-details">
-            <summary>Méthode technique</summary>
-            <pre>{JSON.stringify(analysis.methodology, null, 2)}</pre>
-          </details>
-        </>
-      ) : (
-        <p className="notice" role="status">
-          {stale
-            ? "Le résultat précédent ne correspond plus aux paramètres actuels. Relancez l’analyse pour consulter ses sources."
-            : "Les sources propres au scénario apparaîtront après le calcul."}
-        </p>
-      )}
+        </details>
+
+        <details className="accordion-item">
+          <summary>
+            <span className="accordion-icon" aria-hidden="true"><Database /></span>
+            <span className="accordion-title"><strong>Sources des données</strong><span>D’où viennent les prix, les taux et les profils</span></span>
+            {analysis && <span className="accordion-count">{analysis.sources.length}</span>}
+            <ChevronDown aria-hidden="true" className="check-chevron" />
+          </summary>
+          <div className="accordion-body">
+            {analysis ? (
+              <ul className="source-rows">
+                {analysis.sources.map((source, index) => {
+                  const id = String(source.id ?? "");
+                  const sourceText = String(source.source ?? "Source non précisée");
+                  const sourceUrl = typeof source.source_url === "string" && source.source_url.startsWith("https://")
+                    ? source.source_url
+                    : null;
+                  const retrievedOn = typeof source.retrieved_on === "string" ? source.retrieved_on : null;
+                  return (
+                    <li key={id || index}>
+                      <span className="source-main">
+                        <strong>{sourceRoles[id] ?? "Donnée de référence du projet"}</strong>
+                        <span>{sourceText}{retrievedOn ? ` · récupérée le ${formatDate(retrievedOn)}` : ""}</span>
+                      </span>
+                      {sourceUrl && (
+                        <a href={sourceUrl} target="_blank" rel="noreferrer" aria-label={`Consulter le document original : ${sourceText}`}>
+                          <ExternalLink aria-hidden="true" />Original
+                        </a>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : <p className="help" role="status">{pending}</p>}
+          </div>
+        </details>
+
+        <details className="accordion-item">
+          <summary>
+            <span className="accordion-icon" aria-hidden="true"><AlertTriangle /></span>
+            <span className="accordion-title"><strong>Limites de la simulation</strong><span>Ce que les chiffres ne prennent pas en compte</span></span>
+            {analysis && <span className="accordion-count">{analysis.limitations.length}</span>}
+            <ChevronDown aria-hidden="true" className="check-chevron" />
+          </summary>
+          <div className="accordion-body">
+            {analysis
+              ? <ul className="limit-list">{analysis.limitations.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>
+              : <p className="help" role="status">{pending}</p>}
+          </div>
+        </details>
+      </div>
     </Card>
   );
 }

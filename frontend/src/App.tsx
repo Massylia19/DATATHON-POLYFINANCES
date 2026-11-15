@@ -1,4 +1,4 @@
-import { Menu, Moon, Sun, X } from "lucide-react";
+import { ChevronRight, Menu, Moon, Sun, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./lib/api";
 import { scenarioKey } from "./lib/format";
@@ -352,6 +352,13 @@ function App() {
   }
 
   const pageTitle = NAV_ITEMS.find(item => item.id === page)?.label ?? "Vue d’ensemble";
+  const scenarioStatus = busy ? "busy" : result && !stale ? "done" : result ? "changed" : "todo";
+  const scenarioStatusLabel = {
+    busy: "En cours…",
+    done: "Analysé",
+    changed: "À relancer",
+    todo: "Non analysé",
+  }[scenarioStatus];
   const pageContext = {
     personas: data.personas,
     portfolios: data.portfolios,
@@ -391,7 +398,6 @@ function App() {
 
       <div className="app-frame">
         <aside className={`sidebar ${mobileNavOpen ? "open" : ""}`}>
-          <p className="sidebar-caption">Comprendre avant de décider.</p>
           <nav aria-label="Navigation principale">
             {NAV_ITEMS.map(item => (
               <button
@@ -405,20 +411,28 @@ function App() {
               </button>
             ))}
           </nav>
-          <div className="sidebar-context">
-            <p className="eyebrow">Scénario en préparation</p>
-            <strong>{persona.name}</strong>
-            <span>{data.assets.find(asset => asset.ticker === draft.symbol)?.name ?? draft.symbol} · {draft.target_weight_pct} %</span>
-            {busy && <span className="help" aria-live="polite">Analyse en cours…</span>}
-          </div>
+          <button
+            type="button"
+            className={`sidebar-context status-${scenarioStatus}`}
+            onClick={() => navigate("simulation")}
+            aria-label={`Scénario en cours : ${persona.name}, ${draft.symbol} à ${draft.target_weight_pct} %. ${scenarioStatusLabel}. Ouvrir la simulation`}
+          >
+            <span className={`avatar avatar-${persona.id}`} aria-hidden="true">{persona.name.charAt(0)}</span>
+            <span className="sidebar-context-text">
+              <strong>{persona.name}</strong>
+              <span>{draft.symbol} · {draft.target_weight_pct} %</span>
+              <span className="scenario-status" aria-live="polite">
+                {scenarioStatus === "busy" ? <span className="spinner" aria-hidden="true" /> : <i aria-hidden="true" />}
+                {scenarioStatusLabel}
+              </span>
+            </span>
+            <ChevronRight aria-hidden="true" className="sidebar-context-arrow" />
+          </button>
         </aside>
 
         <main className="main-content">
           <div className="page-heading">
-            <div>
-              <p className="eyebrow">AlphaForge · {persona.name} · profil fictif</p>
-              <h1>{pageTitle}</h1>
-            </div>
+            <h1>{pageTitle}</h1>
           </div>
           {error && (
             <div className="error global" role="alert">
@@ -460,8 +474,8 @@ function App() {
                   assets={data.assets}
                   onNavigate={navigate}
                   onSave={saveScenario}
+                  comparison={<ComparisonPage draft={draft} personaName={persona.name} invalid={!formValid} assets={data.assets} />}
                 />
-                <ComparisonPage draft={draft} personaName={persona.name} invalid={!formValid} assets={data.assets} />
               </div>
             </div>
           )}
@@ -480,7 +494,7 @@ function App() {
             />
           )}
           {page === "sources" && <SourcesPage result={result} stale={stale} />}
-          <footer>Comparaison historique pédagogique · Aucune transaction réelle · Les résultats passés ne prédisent pas l’avenir.</footer>
+          <footer className="legal-footer">Simulation pédagogique · aucune transaction réelle · le passé ne prédit pas l’avenir.</footer>
         </main>
       </div>
     </div>

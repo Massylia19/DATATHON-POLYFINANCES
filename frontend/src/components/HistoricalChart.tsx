@@ -1,3 +1,4 @@
+import { LineChart as LineChartIcon } from "lucide-react";
 import {
   CartesianGrid,
   Line,
@@ -28,7 +29,7 @@ export function HistoricalChart({ analysis }: { analysis: Analysis }) {
   );
   return (
     <section className="chart-block">
-      <h3>Évolution historique</h3>
+      <h3><LineChartIcon aria-hidden="true" />Évolution historique</h3>
       <p className="chart-note">Indice en base 100 au début de la période — ce n’est pas une valeur en dollars.</p>
       <div className="chart" role="img" aria-label="Courbes historiques indexées en base 100, portefeuille initial en trait pointillé et portefeuille après l’ajout en trait continu">
         <ResponsiveContainer width="100%" height="100%">

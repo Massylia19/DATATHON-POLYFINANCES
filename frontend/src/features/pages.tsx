@@ -1,3 +1,4 @@
+import { AlertTriangle, ArrowRight, Clock, MessageCircleQuestion, Play, ShieldCheck, SlidersHorizontal, Users } from "lucide-react";
 import type { Asset, Persona, Portfolio, SavedScenario, Scenario } from "../types";
 import { formatDate, formatWeight } from "../lib/format";
 import {
@@ -36,34 +37,44 @@ function ProfileCard({
   onChoose: () => void;
 }) {
   const missing = formatMissingInformation(persona.missing_information);
+  const horizon = `${persona.horizon_years_min}${persona.horizon_years_max ? `–${persona.horizon_years_max} ans` : " ans et plus"}`;
   return (
     <Card className="persona-card">
-      <p className="eyebrow">{formatRisk(persona)}</p>
-      <h2>{persona.name}</h2>
+      <header className="persona-card-head">
+        <span className={`avatar avatar-${persona.id}`} aria-hidden="true">{persona.name.charAt(0)}</span>
+        <h2>{persona.name}</h2>
+        <span className={`risk-chip risk-${persona.risk_level}`}>{formatRisk(persona).replace(" déclaré", "")}</span>
+      </header>
       <p className="persona-objective">{persona.objective}</p>
-      <p><b>Horizon :</b> {persona.horizon_years_min}{persona.horizon_years_max ? `–${persona.horizon_years_max} ans` : " ans et plus"}</p>
-      <p><b>Préférences :</b> {formatPreferences(persona.preferences)}</p>
-      <p className="demo-question">À explorer : {demoQuestions[persona.id]}</p>
-      <details>
-        <summary>Voir son portefeuille de départ</summary>
-        <ul className="holding-list">
+      <div className="persona-chips">
+        <span className="profile-chip"><Clock aria-hidden="true" />{horizon}</span>
+        <span className="profile-chip"><Play aria-hidden="true" />{scenario.symbol} · {formatWeight(scenario.target_weight_pct)}</span>
+      </div>
+      <ul className="tag-list" aria-label={`Préférences : ${formatPreferences(persona.preferences)}`}>
+        {persona.preferences.map(item => <li key={item}>{item}</li>)}
+      </ul>
+      <Button className="primary" type="button" onClick={onChoose}>
+        Explorer le profil de {persona.name}
+      </Button>
+      <details className="persona-details">
+        <summary>Détails</summary>
+        <p className="demo-question"><b>À explorer :</b> {demoQuestions[persona.id]}</p>
+        <p className="help"><b>Préférences :</b> {formatPreferences(persona.preferences)}</p>
+        <p className="details-label">Portefeuille de départ</p>
+        <ul className="holding-bars">
           {portfolio.positions.map(position => (
             <li key={position.symbol}>
-              <span>{positionLabel(position.symbol, assets)}</span>
+              <span title={positionLabel(position.symbol, assets)}><b>{position.symbol}</b></span>
+              <i aria-hidden="true"><i style={{ width: `${Math.min(position.weight_pct, 100)}%` }} /></i>
               <strong>{formatWeight(position.weight_pct)}</strong>
             </li>
           ))}
         </ul>
+        <p className="help">
+          <AlertTriangle aria-hidden="true" className="inline-icon" />
+          Non renseignés : {missing.join(" · ")}.
+        </p>
       </details>
-      <p className="help">
-        Exemple de départ : {scenario.symbol} à {formatWeight(scenario.target_weight_pct)}.
-      </p>
-      <Button className="primary" type="button" onClick={onChoose}>
-        Explorer le profil de {persona.name}
-      </Button>
-      <p className="help">
-        Informations non renseignées : {missing.join(" · ")}.
-      </p>
     </Card>
   );
 }
@@ -76,49 +87,66 @@ function profileItems(context: PageContext) {
   }));
 }
 
+const overviewSteps = [
+  { page: "simulation", icon: SlidersHorizontal, title: "Simuler", text: "Ajoutez un placement, voyez l’effet." },
+  { page: "coherence", icon: ShieldCheck, title: "Vérifier", text: "Repérez les points de vigilance pour le profil." },
+  { page: "assistant", icon: MessageCircleQuestion, title: "Comprendre", text: "Posez une question sur le résultat." },
+] as const;
+
 export function OverviewPage(context: PageContext & { onNavigate: (page: string) => void }) {
   return (
-    <div className="page-stack">
-      <section className="page-intro">
-        <p className="eyebrow">AlphaForge · simulation pédagogique</p>
+    <div className="page-stack overview">
+      <section className="page-intro overview-hero">
         <h1>Comprenez l’effet d’un changement de portefeuille.</h1>
         <p>
-          Choisissez une situation fictive, testez l’ajout d’un placement et
-          explorez les résultats historiques ainsi que les points de vigilance.
+          Testez l’ajout d’un placement au portefeuille d’un profil fictif et
+          comparez les résultats historiques.
         </p>
-        <p className="notice">
-          Amira, Mateo et Robert sont des profils de démonstration. Vous n’avez
-          pas besoin de choisir une personne qui vous ressemble.
-        </p>
-        <Button className="primary" type="button" onClick={() => context.onNavigate("simulation")}>
-          Commencer une simulation
-        </Button>
-      </section>
-      <section>
-        <div className="section-heading">
-          <div><p className="eyebrow">Trois situations fictives</p><h2>Choisir un profil</h2></div>
-          <Button type="button" onClick={() => context.onNavigate("profiles")}>Voir les profils</Button>
+        <div className="hero-actions">
+          <Button className="primary" type="button" onClick={() => context.onNavigate("simulation")}>
+            <Play aria-hidden="true" />Commencer une simulation
+          </Button>
+          <Button type="button" onClick={() => context.onNavigate("profiles")}>
+            <Users aria-hidden="true" />Voir les profils
+          </Button>
         </div>
-        <div className="persona-grid">
-          {profileItems(context).map(({ persona, portfolio, scenario }) => (
-            <ProfileCard
+      </section>
+
+      <section className="quick-start" aria-labelledby="quick-start-title">
+        <h2 id="quick-start-title">Démarrage rapide</h2>
+        <p className="help">Trois profils de démonstration, pas des personnes réelles.</p>
+        <div className="quick-start-list">
+          {context.personas.map(persona => (
+            <button
               key={persona.id}
-              persona={persona}
-              portfolio={portfolio}
-              assets={context.assets}
-              scenario={scenario}
-              onChoose={() => {
+              type="button"
+              className="quick-start-item"
+              onClick={() => {
                 context.onChoose(persona);
                 context.onNavigate("simulation");
               }}
-            />
+            >
+              <span className={`avatar avatar-${persona.id}`} aria-hidden="true">{persona.name.charAt(0)}</span>
+              <span className="quick-start-text">
+                <strong>{persona.name}</strong>
+                <span>{persona.objective}</span>
+              </span>
+              <ArrowRight aria-hidden="true" className="quick-start-arrow" />
+            </button>
           ))}
         </div>
       </section>
-      <section className="feature-strip" aria-label="Parcours d’analyse">
-        <article><span>01</span><h3>Simuler</h3><p>Modifier un ajout et observer les métriques calculées.</p></article>
-        <article><span>02</span><h3>Examiner</h3><p>Lire les points de vigilance et les informations manquantes.</p></article>
-        <article><span>03</span><h3>Comprendre</h3><p>Consulter les preuves et poser une question liée au résultat.</p></article>
+
+      <section className="how-it-works" aria-label="Comment ça marche">
+        {overviewSteps.map(({ page, icon: Icon, title, text }, index) => (
+          <button key={page} type="button" className="how-step" onClick={() => context.onNavigate(page)}>
+            <span className="how-icon" aria-hidden="true"><Icon /></span>
+            <span>
+              <strong>{index + 1}. {title}</strong>
+              <span>{text}</span>
+            </span>
+          </button>
+        ))}
       </section>
     </div>
   );
@@ -128,12 +156,8 @@ export function ProfilesPage(context: PageContext & { onNavigate: (page: string)
   return (
     <div className="page-stack">
       <section className="page-intro compact">
-        <p className="eyebrow">Profils fictifs</p>
         <h1>Explorer des objectifs différents</h1>
-        <p>
-          Les profils ne représentent pas des clients réels. Ils ne contiennent
-          pas de revenu, de capacité financière ou de situation familiale.
-        </p>
+        <p className="help">Profils de démonstration : aucun revenu, capacité financière ni situation familiale.</p>
       </section>
       <div className="persona-grid profile-grid">
         {profileItems(context).map(({ persona, portfolio, scenario }) => (
