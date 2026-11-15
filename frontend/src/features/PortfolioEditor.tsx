@@ -376,7 +376,7 @@ export function PortfolioEditor({ data, onResult }: PortfolioEditorProps) {
                 Analyse en cours...
               </>
             ) : (
-              <>📊 Analyser ce portefeuille</>
+              <>Analyser ce portefeuille</>
             )}
           </button>
 
