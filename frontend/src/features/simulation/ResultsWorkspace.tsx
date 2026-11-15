@@ -1,3 +1,4 @@
+import { PieChart } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type {
   AnalysisResponse,
@@ -88,24 +89,37 @@ export function SummaryPage({
           <h3>Ce qu’il faut retenir</h3>
           <p>{result.presentation?.summary ?? result.explanation?.summary ?? "Les indicateurs montrent le compromis historique de cet ajout. Ils ne prédisent pas les résultats futurs."}</p>
         </section>
-        <HistoricalChart analysis={analysis} />
-        <details className="allocation-details">
-          <summary>Pondérations détaillées avant et après</summary>
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>Placement</th><th>Avant</th><th>Après</th></tr></thead>
-              <tbody>
-                {Object.keys({ ...analysis.before.weights_by_asset_pct, ...analysis.after.weights_by_asset_pct }).sort().map(symbol => (
-                  <tr key={symbol}>
-                    <td>{positionLabel(symbol, assets)}</td>
-                    <td>{formatWeight(analysis.before.weights_by_asset_pct[symbol] ?? 0)}</td>
-                    <td>{formatWeight(analysis.after.weights_by_asset_pct[symbol] ?? 0)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </details>
+        <div className="chart-weights">
+          <HistoricalChart analysis={analysis} />
+          <section className="weights-panel" aria-labelledby="weights-title">
+            <h3 id="weights-title"><PieChart aria-hidden="true" />Pondérations</h3>
+            <p className="chart-note">Avant → après l’ajout</p>
+            <ul className="weight-bars">
+              {Object.keys({ ...analysis.before.weights_by_asset_pct, ...analysis.after.weights_by_asset_pct })
+                .sort((a, b) => (analysis.after.weights_by_asset_pct[b] ?? 0) - (analysis.after.weights_by_asset_pct[a] ?? 0))
+                .map(symbol => {
+                  const beforeWeight = analysis.before.weights_by_asset_pct[symbol] ?? 0;
+                  const afterWeight = analysis.after.weights_by_asset_pct[symbol] ?? 0;
+                  const added = symbol === result.request.symbol;
+                  return (
+                    <li key={symbol} className={added ? "added" : undefined}>
+                      <div className="weight-line">
+                        <span className="weight-name" title={positionLabel(symbol, assets)}><b>{symbol}</b>{added && <em>nouveau</em>}</span>
+                        <span className="weight-values">
+                          {beforeWeight > 0 && <span className="weight-before">{formatWeight(beforeWeight)} → </span>}
+                          <strong>{formatWeight(afterWeight)}</strong>
+                        </span>
+                      </div>
+                      <div className="weight-track" aria-hidden="true">
+                        <i className="weight-fill-before" style={{ width: `${Math.min(beforeWeight, 100)}%` }} />
+                        <i className="weight-fill-after" style={{ width: `${Math.min(afterWeight, 100)}%` }} />
+                      </div>
+                    </li>
+                  );
+                })}
+            </ul>
+          </section>
+        </div>
         <nav className="result-links" aria-label="Approfondir cette simulation">
           <button type="button" onClick={() => onNavigate("coherence")}>Examiner la cohérence du scénario <span>›</span></button>
           <button type="button" onClick={() => onNavigate("sources")}>Consulter les preuves et les sources <span>›</span></button>

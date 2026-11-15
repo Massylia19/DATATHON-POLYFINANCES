@@ -1,3 +1,4 @@
+import { AlertTriangle, Briefcase, Clock, Gauge, PenLine, PieChart, Play, Target } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
   Asset,
@@ -119,65 +120,54 @@ export function ScenarioPanel({
     }
   };
 
+  const horizon = `${persona.horizon_years_min}${persona.horizon_years_max ? `–${persona.horizon_years_max} ans` : " ans et plus"}`;
+
   return (
-    <Card className="scenario-panel">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">Étape 1 · Profil fictif</p>
-          <h2>Choisir une situation</h2>
+    <Card className="scenario-panel scenario-bar">
+      <h2 className="sr-only">Choisir une situation</h2>
+      <div className="persona-row">
+        <fieldset className="persona-fieldset">
+          <legend className="sr-only">Profil à explorer</legend>
+          <div className="persona-selector">
+            {personas.map(item => (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={draft.persona_id === item.id}
+                onClick={() => onSelectPersona(item.id)}
+              >
+                <span className={`avatar avatar-${item.id}`} aria-hidden="true">{item.name.charAt(0)}</span>
+                {item.name}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <div className="profile-strip">
+          <span className="profile-chip"><Target aria-hidden="true" />{persona.objective}</span>
+          <span className="profile-chip"><Clock aria-hidden="true" />{horizon}</span>
+          <span className={`profile-chip risk-${persona.risk_level}`}><Gauge aria-hidden="true" />{formatRisk(persona)}</span>
+          <details className="portfolio-details inline-pop">
+            <summary><Briefcase aria-hidden="true" />Portefeuille de départ</summary>
+            <div className="pop-body">
+              <ul className="holding-list">
+                {portfolio.positions.map(position => (
+                  <li key={position.symbol}>
+                    <span>{positionLabel(position.symbol, assets)}</span>
+                    <strong>{formatWeight(position.weight_pct)}</strong>
+                  </li>
+                ))}
+              </ul>
+              <p className="help"><b>Préférences :</b> {formatPreferences(persona.preferences)}</p>
+              <p className="help">{portfolio.construction_note}</p>
+              <p className="help">
+                <AlertTriangle aria-hidden="true" className="inline-icon" />
+                Non renseignés : la capacité à absorber une perte, les besoins de
+                liquidités à court terme et les retraits prévus.
+              </p>
+            </div>
+          </details>
         </div>
       </div>
-      <p className="help">
-        Amira, Mateo et Robert sont des profils de démonstration; ils ne sont
-        pas des comptes clients ni des recommandations.
-      </p>
-      <fieldset>
-        <legend>Profil à explorer</legend>
-        <div className="persona-selector">
-          {personas.map(item => (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={draft.persona_id === item.id}
-              onClick={() => onSelectPersona(item.id)}
-            >
-              {item.name}
-            </button>
-          ))}
-        </div>
-      </fieldset>
-      <div className="profile">
-        <span>{formatRisk(persona)}</span>
-        <strong>{persona.objective}</strong>
-        <p>
-          Horizon : {persona.horizon_years_min}
-          {persona.horizon_years_max
-            ? `–${persona.horizon_years_max} ans`
-            : " ans et plus"}
-        </p>
-        <p><b>Préférences :</b> {formatPreferences(persona.preferences)}</p>
-      </div>
-
-      <details className="portfolio-details">
-        <summary>Voir son portefeuille de départ</summary>
-        <ul className="holding-list">
-          {portfolio.positions.map(position => (
-            <li key={position.symbol}>
-              <span>{positionLabel(position.symbol, assets)}</span>
-              <strong>{formatWeight(position.weight_pct)}</strong>
-            </li>
-          ))}
-        </ul>
-        <p className="help">{portfolio.construction_note}</p>
-      </details>
-
-      <section className="unknowns-note">
-        <h3>Ce que nous ne savons pas</h3>
-        <p>
-          La capacité à absorber une perte, les besoins de liquidités à court
-          terme et les retraits prévus ne sont pas renseignés.
-        </p>
-      </section>
 
       <form
         className="scenario-form"
@@ -186,10 +176,9 @@ export function ScenarioPanel({
           if (validForm) onAnalyze();
         }}
       >
-        <p className="eyebrow">Étape 2 · Simulation</p>
-        <h2>Décrire un changement</h2>
+        <h2 className="sr-only">Décrire un changement</h2>
+        <div className="field asset-field">
         <label htmlFor="asset-search">Actif à ajouter</label>
-        <p className="help" id="asset-help">Un actif est un placement, par exemple une action ou un fonds.</p>
         <input
           id="asset-search"
           role="combobox"
@@ -238,8 +227,11 @@ export function ScenarioPanel({
               ? "Choisissez un placement dans la liste."
               : "Tapez un nom ou un symbole pour rechercher."}
         </p>
+        <span id="asset-help" className="sr-only">Un actif est un placement, par exemple une action ou un fonds.</span>
+        </div>
 
-        <label htmlFor="weight-slider">Place du nouvel actif dans le portefeuille (%)</label>
+        <div className="field weight-field">
+        <label htmlFor="weight-slider">Part du nouvel actif (%)</label>
         <div className="weight-controls">
           <input
             id="weight-slider"
@@ -266,16 +258,20 @@ export function ScenarioPanel({
         </div>
         <p id="weight-help" className={validWeight ? "help" : "field-error"}>
           {validWeight
-            ? "De 1 % à 50 %, par pas de 0,5 %."
+            ? "Les autres placements sont réduits dans les mêmes proportions."
             : "Saisissez un nombre de 1 % à 50 %, par pas de 0,5 %."}
         </p>
-        <p className="help">
-          Pour faire de la place au nouvel actif, les placements de départ sont
-          réduits dans les mêmes proportions.
-        </p>
+        </div>
 
-        <section className="allocation-preview" aria-live="polite">
-          <h3>Aperçu des pondérations</h3>
+        <div className="field action-field">
+          <Button className="primary analyze-button" type="submit" disabled={busy || !validForm || !formValid}>
+            {busy ? <><Spinner />Calcul en cours…</> : <><Play aria-hidden="true" />Analyser le scénario</>}
+          </Button>
+        </div>
+
+        <details className="allocation-preview inline-pop" aria-live="polite">
+          <summary><PieChart aria-hidden="true" />Aperçu</summary>
+          <div className="pop-body">
           {validForm ? (
             <>
               {preview.map(item => (
@@ -296,14 +292,12 @@ export function ScenarioPanel({
           ) : (
             <p className="help">Choisissez un placement et une proportion valide.</p>
           )}
-        </section>
-        <Button className="primary" type="submit" disabled={busy || !validForm || !formValid}>
-          {busy ? <><Spinner />Calcul en cours…</> : "Analyser le scénario"}
-        </Button>
+          </div>
+        </details>
       </form>
 
       <details className="natural">
-        <summary>Décrire une demande avec vos mots (facultatif)</summary>
+        <summary><PenLine aria-hidden="true" className="inline-icon" />Décrire une demande avec vos mots (facultatif)</summary>
         <form
           onSubmit={event => {
             event.preventDefault();
