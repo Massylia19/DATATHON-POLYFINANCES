@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
-
 import streamlit as st
 
 try:
-    from alphaforge.engine import run_analysis, load_asset_universe
-    from alphaforge.profile_checks import validate_profile
+    from agent.context import create_request_context
+    from agent.evidence import resolve_evidence_reference
+    from agent.service import analyze_request
+    from alphaforge.engine import load_asset_universe
 
     ENGINE_AVAILABLE = True
 except ImportError:
@@ -21,30 +23,30 @@ DATA_DIR = ROOT / "data"
 ASSETS_PATH = DATA_DIR / "market" / "assets_universe.csv"
 CSS_PATH = ROOT / "styles" / "style.css"
 
-# Variables de couleur par thème. "Système" n'est pas listé : le thème
-# Streamlit par défaut est conservé tel quel.
 THEMES = {
-    "Clair": {
-        "page-bg": "#DFFF00",
-        "surface-bg": "#F4FFB3",
-        "text-color": "#000000",
-        "secondary-text": "#333333",
-        "border-color": "#829900",
-        "button-bg": "#000000",
-        "button-text": "#DFFF00",
-        "input-bg": "#F4FFB3",
-    },
     "Sombre": {
-        "page-bg": "#123524",
-        "surface-bg": "#1B4933",
-        "text-color": "#FFFFFF",
-        "secondary-text": "#D0DED4",
-        "border-color": "#527A62",
-        "button-bg": "#FFFFFF",
-        "button-text": "#123524",
-        "input-bg": "#1B4933",
+        "page-bg": "#0B1F14", "page-glow": "#1D4A30",
+        "surface-bg": "#12331F", "surface-bg-2": "#0E2818",
+        "text-color": "#F2F7F3", "secondary-text": "#A8BDAF",
+        "border-color": "#2C4B39", "accent": "#B7F05A",
+        "button-bg": "#B7F05A", "button-text": "#0B1F14",
+        "input-bg": "#0F2A1B",
+    },
+    "Clair": {
+        "page-bg": "#F4F9E8", "page-glow": "#E3F2B8",
+        "surface-bg": "#FFFFFF", "surface-bg-2": "#F1F7E0",
+        "text-color": "#0B1F14", "secondary-text": "#4A5F52",
+        "border-color": "#C9DBB0", "accent": "#2E7D32",
+        "button-bg": "#123524", "button-text": "#DFFF00",
+        "input-bg": "#FFFFFF",
     },
 }
+
+
+def load_css(path: Path) -> str:
+    css = path.read_text(encoding="utf-8")
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    return re.sub(r"\s+", " ", css).strip()
 
 
 def read_json(path: Path) -> dict:
@@ -57,7 +59,7 @@ def format_pct(value: float, signed: bool = False) -> str:
 
 
 def format_points(value: float) -> str:
-    return f"{value * 100:+.2f} points"
+    return f"{value * 100:+.2f} points de pourcentage"
 
 
 def asset_weights(portfolio: dict) -> dict[str, float]:
@@ -67,47 +69,231 @@ def asset_weights(portfolio: dict) -> dict[str, float]:
     }
 
 
-def fallback_explanation(persona: dict, result: dict) -> str:
-    metrics = result["after"]["metrics"]
-    delta = result["delta_after_minus_before"]["metrics"]
-    symbol = result["scenario"]["added_symbol"]
-    target = result["scenario"]["target_weight_pct"]
-    return (
-        f"Le scénario ajoute {symbol} à {target:g} % au portefeuille de "
-        f"{persona['name']}, dont l’objectif est « {persona['objective']} ». "
-        f"Dans la période observée, le rendement total est de "
-        f"{format_pct(metrics['total_return'])} ({format_points(delta['total_return'])} "
-        f"par rapport au portefeuille initial), la volatilité annualisée de "
-        f"{format_pct(metrics['annualized_volatility'])} "
-        f"({format_points(delta['annualized_volatility'])} d’écart) et le recul "
-        f"maximal de {format_pct(metrics['max_drawdown'])} "
-        f"({format_points(delta['max_drawdown'])} d’écart). Ces constats décrivent "
-        "la période historique simulée et ne préjugent pas des résultats futurs."
+def request_key(persona_id: str, symbol: str, weight: float) -> dict:
+    return {
+        "persona_id": persona_id,
+        "symbol": symbol,
+        "target_weight_pct": float(weight),
+    }
+
+
+def render_evidence_references(
+    references: list[str], request: dict, response: dict
+) -> None:
+    if not references:
+        return
+    context = create_request_context(
+        request["persona_id"],
+        request["symbol"],
+        request["target_weight_pct"],
+        root=ROOT,
     )
+    context.analysis = response.get("analysis")
+    context.checks = response.get("checks")
+    with st.expander("Preuves consultables"):
+        for reference in dict.fromkeys(references):
+            resolved = resolve_evidence_reference(context, reference)
+            st.markdown(f"**`{reference}`**")
+            if resolved["status"] == "resolved":
+                value = resolved["value"]
+                if isinstance(value, (dict, list)):
+                    st.json(value)
+                else:
+                    st.write(value)
+            else:
+                st.warning(resolved.get("reason", "Référence introuvable."))
+
+
+def render_checks(checks: list[dict], request: dict, response: dict) -> None:
+    st.markdown("**Contrôles du profil**")
+    for finding in checks:
+        message = f"**{finding['title']}** — {finding['message']}"
+        if finding["status"] == "tension":
+            st.warning(message)
+        elif finding["status"] == "consistent":
+            st.success(message)
+        else:
+            st.info(message)
+        if finding.get("missing_information"):
+            st.caption(
+                "Informations manquantes : "
+                + ", ".join(finding["missing_information"])
+            )
+        render_evidence_references(
+            finding.get("evidence_refs", []), request, response
+        )
+        evidence = finding.get("evidence", {})
+        assessed_sources = evidence.get("assessed_evidence", [])
+        if assessed_sources:
+            with st.expander(f"Preuves pour : {finding['title']}"):
+                for item in assessed_sources:
+                    publisher = item.get("publisher", "Source non précisée")
+                    evidence_date = item.get("date") or "Date non précisée"
+                    claim = item.get("claim", "Énoncé non précisé")
+                    url = item.get("url")
+                    line = f"- **{publisher}** ({evidence_date}) : {claim}"
+                    st.markdown(
+                        f"{line} [Consulter la source]({url})" if url else line
+                    )
+                    if item.get("limitation"):
+                        st.caption(item["limitation"])
+        elif evidence:
+            with st.expander(f"Éléments examinés : {finding['title']}"):
+                st.json(evidence)
+
+
+def render_explanation(explanation: dict, request: dict, response: dict) -> None:
+    st.subheader("Explication et alertes")
+    st.write(explanation["summary"])
+    st.caption("Explication produite par AWS Bedrock et validée par AlphaForge.")
+    for change in explanation.get("changes", []):
+        st.markdown(f"**Changement — {change['topic']}**")
+        st.write(change["message"])
+        render_evidence_references(change.get("evidence_refs", []), request, response)
+    if explanation.get("profile_assessment"):
+        st.markdown("**Évaluation selon le profil**")
+    for assessment in explanation.get("profile_assessment", []):
+        st.write(
+            f"**{assessment['check_id']} — {assessment['status']}** : "
+            f"{assessment['message']}"
+        )
+        if assessment.get("missing_information"):
+            st.caption(
+                "Informations manquantes : "
+                + ", ".join(assessment["missing_information"])
+            )
+        render_evidence_references(
+            assessment.get("evidence_refs", []), request, response
+        )
+    if explanation.get("uncertainties"):
+        st.markdown("**Incertitudes**")
+        for uncertainty in explanation["uncertainties"]:
+            st.markdown(f"- {uncertainty}")
+
+
+def render_analysis(analysis: dict) -> None:
+    st.caption(
+        f"Période : {analysis['period']['start']} au {analysis['period']['end']} · "
+        f"{analysis['period']['common_observations']:,} dates communes · "
+        f"devise : {analysis['currency']}"
+    )
+    before, after = analysis["before"], analysis["after"]
+    metric_deltas = analysis["delta_after_minus_before"]["metrics"]
+    metric_labels = {
+        "total_return": "Rendement total",
+        "annualized_volatility": "Volatilité annualisée",
+        "max_drawdown": "Recul maximal",
+    }
+    for column, key in zip(st.columns(3), metric_labels):
+        column.metric(
+            metric_labels[key],
+            format_pct(after["metrics"][key]),
+            delta=format_points(metric_deltas[key]),
+            delta_color="inverse" if key == "annualized_volatility" else "normal",
+            help="Écart après moins avant, en points de pourcentage.",
+        )
+    st.dataframe(
+        [
+            {
+                "Indicateur": label,
+                "Avant": format_pct(before["metrics"][key]),
+                "Après": format_pct(after["metrics"][key]),
+                "Écart": format_points(metric_deltas[key]),
+            }
+            for key, label in metric_labels.items()
+        ],
+        hide_index=True,
+        width="stretch",
+    )
+    st.subheader("Pondérations avant et après")
+    rows = []
+    for symbol in sorted(
+        set(before["weights_by_asset_pct"]) | set(after["weights_by_asset_pct"])
+    ):
+        old = before["weights_by_asset_pct"].get(symbol, 0.0)
+        new = after["weights_by_asset_pct"].get(symbol, 0.0)
+        rows.append(
+            {
+                "Actif": symbol,
+                "Avant (%)": f"{old:.1f}",
+                "Après (%)": f"{new:.1f}",
+                "Écart (points)": f"{new - old:+.1f}",
+            }
+        )
+    st.dataframe(rows, hide_index=True, width="stretch")
+    st.subheader("Évolution historique (base 100)")
+    series = analysis.get("series")
+    if series:
+        st.line_chart(
+            {
+                "Date": series["dates"],
+                "Portefeuille initial": series["before"],
+                "Après scénario": series["after"],
+            },
+            x="Date",
+            y=["Portefeuille initial", "Après scénario"],
+        )
+    else:
+        st.warning("Les séries temporelles sont absentes; courbe indisponible.")
+
+
+def render_methodology(analysis: dict) -> None:
+    with st.expander("Méthode, sources et limites"):
+        for value in analysis.get("methodology", {}).values():
+            st.write(value)
+        st.markdown("**Sources**")
+        for source in analysis.get("sources", []):
+            retrieved = source.get("retrieved_on") or "date non précisée"
+            label = (
+                f"{source.get('file', source.get('id', 'Source'))} — "
+                f"{source.get('source', 'origine non précisée')} "
+                f"(extrait le {retrieved})"
+            )
+            url = source.get("source_url")
+            st.markdown(f"- [{label}]({url})" if url and url != "n/a" else f"- {label}")
+            if source.get("limitations"):
+                st.caption(source["limitations"])
+        st.markdown("**Limites de l’analyse**")
+        for limitation in analysis.get("limitations", []):
+            st.markdown(f"- {limitation}")
+
+
+def render_tool_trace(response: dict) -> None:
+    trace = response.get("tool_trace") or (
+        response.get("explanation") or {}
+    ).get("tool_trace", [])
+    if not trace:
+        return
+    with st.expander("Traces factuelles des outils"):
+        for entry in trace:
+            st.markdown(f"**{entry.get('tool', 'outil')} — {entry.get('status', 'inconnu')}**")
+            st.write("Arguments validés :", entry.get("arguments", {}))
+            st.caption(
+                "Origine d’exécution : "
+                + entry.get("execution_origin", "non précisée")
+            )
 
 
 st.set_page_config(
     page_title="AlphaForge AI - Datathon Polyfinances", layout="wide")
 
-# Sélection du thème
 theme = st.radio(
     "Thème de l’interface",
-    ["Système", "Clair", "Sombre"],
+    ["Clair", "Sombre"],
     horizontal=True,
-    key="app_theme"
+    key="app_theme",
 )
 
-# Injection du thème : les variables CSS sont définies ici, depuis la valeur
-# choisie, plutôt que de deviner l'état du bouton radio dans le DOM.
-if theme in THEMES:
-    css_variables = "\n".join(
-        f"--{name}: {value};" for name, value in THEMES[theme].items()
-    )
+try:
     css = CSS_PATH.read_text(encoding="utf-8")
-    st.markdown(
-        f"<style>:root {{\n{css_variables}\n}}\n{css}</style>",
-        unsafe_allow_html=True,
-    )
+except OSError as exc:
+    st.error(
+        f"Impossible de charger la feuille de style {CSS_PATH.name} : {exc}")
+    st.stop()
+variables = " ".join(f"--{k}: {v};" for k, v in THEMES[theme].items())
+color_scheme = "dark" if theme == "Sombre" else "light"
+st.html(
+    f"<style>:root {{ {variables} color-scheme: {color_scheme}; }} {css}</style>")
 
 st.title("AlphaForge AI : comparaison de portefeuilles")
 st.write(
@@ -192,131 +378,70 @@ with st.form("custom_scenario_form"):
     submitted = st.form_submit_button("Analyser le changement", type="primary")
 
 if submitted:
+    analyzed_request = request_key(persona["id"], selected_symbol, target_weight)
     try:
-        with st.spinner("Calcul de la simulation historique…"):
-            result = run_analysis(
-                persona["id"],
-                selected_symbol,
-                target_weight,
-                root=ROOT,
+        with st.spinner("Analyse du changement avec AWS Bedrock…"):
+            response = analyze_request(
+                persona["id"], selected_symbol, target_weight
             )
-            profile_findings = validate_profile(
-                persona,
-                {
-                    "symbol": selected_symbol,
-                    "target_weight_pct": target_weight,
-                },
-                result,
-                DATA_DIR,
-            )
-    except (OSError, KeyError, ValueError, ZeroDivisionError) as exc:
-        st.error(f"Le calcul n’a pas pu être effectué : {exc}")
-        st.stop()
-
-    st.success("Simulation historique calculée.")
-    st.caption(
-        f"Période : {result['period']['start']} au {result['period']['end']} · "
-        f"{result['period']['common_observations']:,} dates communes · devise : {result['currency']}"
-    )
-    before, after = result["before"], result["after"]
-    metric_deltas = result["delta_after_minus_before"]["metrics"]
-    metric_labels = {
-        "total_return": "Rendement total",
-        "annualized_volatility": "Volatilité annualisée",
-        "max_drawdown": "Recul maximal",
-    }
-    metric_columns = st.columns(3)
-    for column, key in zip(metric_columns, metric_labels):
-        column.metric(
-            metric_labels[key], format_pct(after["metrics"][key]),
-            delta=format_points(metric_deltas[key]),
-            delta_color=(
-                "inverse" if key == "annualized_volatility" else "normal"
-            ),
-            help="Écart après moins avant, en points de pourcentage.",
-        )
-    st.dataframe(
-        [
-            {
-                "Indicateur": label,
-                "Avant": format_pct(before["metrics"][key]),
-                "Après": format_pct(after["metrics"][key]),
-                "Écart": format_points(metric_deltas[key]),
-            }
-            for key, label in metric_labels.items()
-        ],
-        hide_index=True,
-        width="stretch",
-    )
-
-    st.subheader("Pondérations avant et après")
-    union = sorted(set(before["weights_by_asset_pct"])
-                   | set(after["weights_by_asset_pct"]))
-    rows = []
-    for symbol in union:
-        old = before["weights_by_asset_pct"].get(symbol, 0.0)
-        new = after["weights_by_asset_pct"].get(symbol, 0.0)
-        rows.append({
-            "Actif": symbol, "Avant (%)": f"{old:.1f}",
-            "Après (%)": f"{new:.1f}", "Écart (points)": f"{new - old:+.1f}",
-        })
-    st.dataframe(rows, hide_index=True, width="stretch")
-
-    st.subheader("Évolution historique (base 100)")
-    series = result.get("series")
-    if series:
-        st.line_chart(
-            {
-                "Date": series["dates"],
-                "Portefeuille initial": series["before"],
-                "Après scénario": series["after"],
+    except Exception:
+        response = {
+            "status": "error",
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "Le service d’analyse a rencontré une erreur inattendue.",
             },
-            x="Date",
-            y=["Portefeuille initial", "Après scénario"],
-            x_label="Date", y_label="Valeur de 100 $ investis (CAD)",
+        }
+    st.session_state["analyzed_request"] = analyzed_request
+    st.session_state["analysis_response"] = response
+
+stored_request = st.session_state.get("analyzed_request")
+response = st.session_state.get("analysis_response")
+current_request = request_key(persona["id"], selected_symbol, target_weight)
+
+if stored_request and response:
+    st.markdown(
+        "**Résultat conservé :** "
+        f"{stored_request['persona_id']} / {stored_request['symbol']} / "
+        f"{stored_request['target_weight_pct']:g} %"
+    )
+    if current_request != stored_request:
+        st.warning(
+            "Le formulaire vise maintenant un autre scénario. Les résultats "
+            "ci-dessous correspondent encore à la demande conservée; cliquez "
+            "sur « Analyser le changement » pour lancer une nouvelle analyse."
+        )
+
+    status = response.get("status")
+    if status == "error":
+        error = response.get("error", {})
+        st.error(
+            f"Analyse impossible ({error.get('code', 'INTERNAL_ERROR')}) : "
+            f"{error.get('message', 'Erreur non précisée.')}"
         )
     else:
-        st.warning(
-            "Les séries temporelles ne sont pas incluses dans ce résultat; courbe indisponible.")
-
-    st.subheader("Explication et alertes")
-    st.write(fallback_explanation(persona, result))
-    st.caption(
-        "Explication locale déterministe. "
-        "L’agent IA reste à intégrer."
-    )
-
-    st.markdown("**Contrôles du profil**")
-    for finding in profile_findings:
-        message = f"**{finding['title']}** — {finding['message']}"
-        if finding["status"] == "tension":
-            st.warning(message)
-        elif finding["status"] == "consistent":
-            st.success(message)
-        else:
-            st.info(message)
-        if finding["missing_information"]:
-            st.caption(
-                "Informations manquantes : "
-                + ", ".join(finding["missing_information"])
+        analysis = response.get("analysis")
+        checks = response.get("checks") or []
+        if status == "success":
+            st.success("Analyse AlphaForge et explication Bedrock terminées.")
+        elif status == "partial":
+            st.warning(
+                "Analyse partielle : les calculs disponibles sont conservés, "
+                "mais aucune explication IA validée n’est présentée."
             )
-
-    with st.expander("Méthode, sources et limites"):
-        st.write(result["methodology"]["simulation"])
-        st.write(result["methodology"]["calendar_alignment"])
-        st.write(result["methodology"]["fx_conversion"])
-        st.markdown("**Sources**")
-        for source in result["sources"]:
-            label = f"{source['file']} — {source['source']} (extrait le {source['retrieved_on']})"
-            if source.get("source_url") and source["source_url"] != "n/a":
-                st.markdown(f"- [{label}]({source['source_url']})")
-            else:
-                st.markdown(f"- {label}")
-            if source.get("limitations"):
-                st.caption(source["limitations"])
-        st.markdown("**Limites de l’analyse**")
-        for limitation in result["limitations"]:
-            st.markdown(f"- {limitation}")
+        for warning in response.get("warnings", []):
+            st.warning(warning)
+        if analysis:
+            render_analysis(analysis)
+        render_checks(checks, stored_request, response)
+        explanation = response.get("explanation")
+        if explanation:
+            render_explanation(explanation, stored_request, response)
+        elif status == "partial":
+            st.info("Explication Bedrock validée indisponible pour cette réponse.")
+        if analysis:
+            render_methodology(analysis)
+        render_tool_trace(response)
 
 st.caption(
     "Simulation académique historique, pas une prévision ni un conseil en placement. "

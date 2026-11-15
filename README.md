@@ -229,7 +229,75 @@ Diagnostic de l'accès AWS : voir [docs/aws_bedrock_diagnostic.md](docs/aws_bedr
 
 ## Interface
 
-> _À compléter par la Personne 3 : lancement (`streamlit run app.py`), parcours utilisateur, captures d'écran, lien vers la vidéo de démonstration._
+L'interface Streamlit (`app.py`, styles dans `styles/style.css`) permet de simuler l'ajout d'un actif au portefeuille fictif d'un persona et de lire les résultats sans passer par la ligne de commande. Elle appelle `agent.service.analyze_request`, qui orchestre le moteur, les contrôles du profil et l'explication Bedrock validée.
+
+### Lancement
+
+Depuis la racine du dépôt, avec l'environnement virtuel activé (voir [Installation](#installation)) :
+
+```bash
+streamlit run app.py
+```
+
+Si la commande `streamlit` n'est pas reconnue, utiliser :
+
+```bash
+python -m streamlit run app.py
+```
+
+Sous Windows, remplacer `python` par `py -3`.
+
+Le terminal doit contenir les identifiants temporaires AWS Workshop Studio et
+la configuration non secrète suivante :
+
+```powershell
+$env:BEDROCK_MODEL_ID = "us.anthropic.claude-opus-5-5"
+python -m streamlit run app.py
+```
+
+La région utilisée par le service est `us-east-1`. L'interface ne demande et
+n'enregistre aucune clé AWS.
+
+Streamlit affiche l'adresse de l'application dans le terminal, par défaut <http://localhost:8501>, et ouvre normalement le navigateur automatiquement. Pour arrêter l'application, appuyer sur `Ctrl+C` dans le terminal. Après une modification de `app.py` ou de `styles/style.css`, il suffit de recharger la page; une modification de `.streamlit/config.toml` demande de relancer l'application.
+
+### Parcours utilisateur
+
+1. **Choisir le thème (facultatif).** Le sélecteur en haut de la page permet de passer de l'affichage Clair à l'affichage Sombre.
+
+2. **Choisir un persona.** Dans la liste « Choisissez un persona », sélectionner Amira, Mateo ou Robert. La page affiche son objectif, son horizon de placement, ses préférences, les informations inconnues à son sujet et son portefeuille fictif initial (actifs et pondérations).
+
+3. **Ajouter un actif.** Dans le formulaire :
+   - « Actif à ajouter » : choisir un actif de `data/market/assets_universe.csv` que le persona ne détient pas déjà. Un actif est proposé par défaut, selon le scénario de référence de `data/scenarios.json`;
+   - « Poids cible (%) » : régler le poids de l'actif ajouté, de 1 % à 50 % par pas de 0,5 %. Ce poids est financé par une réduction proportionnelle des positions existantes.
+
+4. **Lancer l'analyse.** Cliquer sur « Analyser le changement ». Un seul appel au service orchestre la simulation historique, les contrôles et l'explication Bedrock.
+
+5. **Lire les résultats**, dans l'ordre où ils apparaissent :
+   - **Période et données** : dates de début et de fin, nombre de dates communes et devise (CAD);
+   - **Indicateurs** : rendement total, volatilité annualisée et baisse maximale après scénario, avec l'écart par rapport au portefeuille initial en points de pourcentage, puis un tableau Avant / Après / Écart;
+   - **Pondérations avant et après** : poids de chaque actif et variation en points;
+   - **Évolution historique (base 100)** : courbes du portefeuille initial et du portefeuille après scénario, normalisées à 100 à la première date commune;
+   - **Explication et alertes** : explication structurée et validée produite par Bedrock, lorsqu'elle est disponible;
+   - **Contrôles du profil** : constats comparant le scénario au profil du persona. Un avertissement signale une tension, un message de succès une cohérence, et un message d'information un point à vérifier ou une information insuffisante. Les informations manquantes sont indiquées sous chaque constat, et les preuves examinées se consultent dans la section dépliable associée;
+   - **Méthode, sources et limites** : section dépliable qui décrit la méthode de simulation, l'alignement des calendriers, la conversion des devises, les sources de données et les limites de l'analyse.
+
+6. **Explorer d'autres scénarios.** Modifier l'actif ou le poids, ou changer de persona, puis relancer explicitement l'analyse. Le dernier résultat reste en session lors d'un changement de thème ou d'un rerun et aucun nouvel appel AWS n'est effectué sans soumission. Si le formulaire diffère de la demande conservée, l'interface le signale.
+
+### Ce que l'interface affiche et ne fait pas
+
+- En état `success`, l'explication affichée provient de Bedrock et a passé les validations de références, de contrôles et de structure de l'application.
+- En état `partial`, les calculs et contrôles disponibles restent affichés, avec les avertissements, mais aucune explication locale n'est présentée comme une réponse de Claude.
+- En état `error`, le code et le message d'erreur sont affichés sans transformer un ancien résultat en nouvelle réussite.
+- Tous les chiffres proviennent du moteur de simulation. L'interface ne fait que les mettre en forme.
+- Les résultats décrivent une période historique simulée; ils ne préjugent pas des résultats futurs. Aucune transaction n'est exécutée.
+
+### Thèmes
+
+Les thèmes Clair et Sombre sont définis dans `app.py` (dictionnaire `THEMES`, qui fournit les couleurs) et dans `styles/style.css` (mise en forme des cartes, boutons, tableaux et alertes). Pour modifier une couleur, changer sa valeur dans `THEMES`; pour modifier la forme d'un élément, éditer `styles/style.css`.
+
+### Captures d'écran et démonstration
+
+> _À ajouter : captures d'écran de l'interface (choix du persona, formulaire, résultats, contrôles du profil) et lien vers la vidéo de démonstration._
 
 ---
 

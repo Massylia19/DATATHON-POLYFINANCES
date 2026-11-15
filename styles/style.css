@@ -1,26 +1,35 @@
 /* =========================================================
    ALPHAFORGE — THÈMES
-   Système : thème Streamlit par défaut, non modifié
-   Clair : fond lime + texte noir
-   Sombre : fond vert foncé + texte blanc
+   Clair : fond lime et texte noir
+   Sombre : fond vert foncé et texte blanc
 
    Les variables (--page-bg, --text-color, etc.) sont définies
    dans app.py (dictionnaire THEMES) et injectées sur :root
-   uniquement quand Light ou Dark est choisi. Ce fichier n'est
-   donc chargé que pour ces deux thèmes.
    ========================================================= */
 
 
 /* ---------------------------------------------------------
-   1. FONDS ET CONTENEURS
+   1. FOND DE PAGE ET TYPOGRAPHIE
    --------------------------------------------------------- */
 
-.stApp,
+.stApp {
+    background:
+        radial-gradient(1100px 520px at 85% -5%, var(--page-glow, #1D4A30), transparent 70%),
+        var(--page-bg);
+    color: var(--text-color);
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
 [data-testid="stAppViewContainer"],
 [data-testid="stMain"],
 [data-testid="stHeader"] {
-    background-color: var(--page-bg);
+    background-color: transparent;
     color: var(--text-color);
+}
+
+[data-testid="stMainBlockContainer"] {
+    padding-top: 2.5rem;
+    max-width: 1400px;
 }
 
 
@@ -39,8 +48,23 @@
     color: var(--text-color);
 }
 
-[data-testid="stCaptionContainer"] {
+[data-testid="stAppViewContainer"] h1 {
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+[data-testid="stAppViewContainer"] h2,
+[data-testid="stAppViewContainer"] h3 {
+    font-weight: 700;
+}
+
+[data-testid="stCaptionContainer"],
+[data-testid="stCaptionContainer"] p {
     color: var(--secondary-text);
+}
+
+[data-testid="stAppViewContainer"] a {
+    color: var(--accent, #B7F05A);
 }
 
 
@@ -50,16 +74,23 @@
 
 .stButton button,
 .stFormSubmitButton button {
-    background-color: var(--button-bg);
+    background: var(--button-bg);
     color: var(--button-text);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    font-weight: 600;
+    border: 1px solid var(--button-bg);
+    border-radius: 10px;
+    font-weight: 700;
+    padding: 0.55rem 1.4rem;
+}
+
+.stButton button p,
+.stFormSubmitButton button p {
+    color: var(--button-text);
+    font-weight: 700;
 }
 
 .stButton button:hover,
 .stFormSubmitButton button:hover {
-    opacity: 0.85;
+    opacity: 0.9;
     border-color: var(--text-color);
     color: var(--button-text);
 }
@@ -74,7 +105,8 @@
 [data-baseweb="textarea"] > div {
     background-color: var(--input-bg);
     color: var(--text-color);
-    border-color: var(--border-color);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
 }
 
 [data-baseweb="select"] *,
@@ -94,15 +126,40 @@
 
 
 /* ---------------------------------------------------------
-   5. SLIDERS ET BOUTONS RADIO
+   5. SLIDER ET CHOIX DU THÈME
    --------------------------------------------------------- */
 
 [data-testid="stSlider"] {
     color: var(--text-color);
 }
 
+[data-testid="stSlider"] [role="slider"] {
+    background-color: var(--accent, #B7F05A);
+    box-shadow: 0 0 0 4px rgba(183, 240, 90, 0.25);
+}
+
+[data-testid="stSliderThumbValue"] {
+    background-color: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0 8px;
+    color: var(--text-color);
+}
+
+[data-testid="stSliderTickBarMin"],
+[data-testid="stSliderTickBarMax"] {
+    color: var(--secondary-text);
+}
+
 [data-testid="stRadio"] label {
     color: var(--text-color);
+}
+
+[data-testid="stRadio"] [role="radiogroup"] label {
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 2px 14px;
+    background: var(--surface-bg);
 }
 
 
@@ -112,28 +169,34 @@
 
 [data-testid="stDataFrame"],
 [data-testid="stTable"] {
-    background-color: var(--surface-bg);
+    background: linear-gradient(160deg, var(--surface-bg-2, #0F2A1B), var(--surface-bg));
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 14px;
     overflow: hidden;
 }
 
 
 /* ---------------------------------------------------------
-   7. INDICATEURS / MÉTRIQUES
+   7. INDICATEURS / MÉTRIQUES (cartes KPI)
    --------------------------------------------------------- */
 
 [data-testid="stMetric"] {
-    background-color: var(--surface-bg);
+    background: linear-gradient(160deg, var(--surface-bg-2, #0F2A1B), var(--surface-bg));
     border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 15px;
+    border-radius: 14px;
+    padding: 18px 20px;
 }
 
 [data-testid="stMetricLabel"],
-[data-testid="stMetricValue"],
-[data-testid="stMetricDelta"] {
+[data-testid="stMetricLabel"] p {
+    color: var(--secondary-text);
+    font-weight: 600;
+}
+
+[data-testid="stMetricValue"] {
     color: var(--text-color);
+    font-weight: 700;
+    font-size: 2rem;
 }
 
 
@@ -142,7 +205,13 @@
    --------------------------------------------------------- */
 
 [data-testid="stAlert"] {
-    border-radius: 8px;
+    background: linear-gradient(160deg, var(--surface-bg-2, #0F2A1B), var(--surface-bg));
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+}
+
+[data-testid="stAlert"] p {
+    color: var(--text-color);
 }
 
 
@@ -151,14 +220,15 @@
    --------------------------------------------------------- */
 
 [data-testid="stExpander"] {
-    background-color: var(--surface-bg);
+    background: linear-gradient(160deg, var(--surface-bg-2, #0F2A1B), var(--surface-bg));
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 14px;
 }
 
 [data-testid="stExpander"] summary,
 [data-testid="stExpander"] summary span {
     color: var(--text-color);
+    font-weight: 600;
 }
 
 
@@ -167,12 +237,146 @@
    --------------------------------------------------------- */
 
 [data-testid="stForm"] {
-    background-color: var(--surface-bg);
+    background: linear-gradient(160deg, var(--surface-bg-2, #0F2A1B), var(--surface-bg));
     border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 20px;
+    border-radius: 14px;
+    padding: 22px;
 }
 
 hr {
     border-color: var(--border-color);
+}
+
+
+/* ---------------------------------------------------------
+   11. TYPOGRAPHIE FINANCIÈRE
+   --------------------------------------------------------- */
+
+.stApp {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+[data-testid="stAppViewContainer"] p,
+[data-testid="stAppViewContainer"] label,
+[data-testid="stAppViewContainer"] li {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Titres en serif : l'allure classique des institutions financières */
+[data-testid="stAppViewContainer"] h1,
+[data-testid="stAppViewContainer"] h2,
+[data-testid="stAppViewContainer"] h3,
+[data-testid="stAppViewContainer"] h4 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight: 600;
+    letter-spacing: 0;
+    font-variant-numeric: lining-nums;
+}
+
+[data-testid="stAppViewContainer"] h1 {
+    font-size: 2.2rem;
+    line-height: 1.2;
+}
+
+[data-testid="stAppViewContainer"] h2 {
+    font-size: 1.6rem;
+}
+
+[data-testid="stAppViewContainer"] h3 {
+    font-size: 1.3rem;
+}
+
+/* Légendes discrètes */
+[data-testid="stCaptionContainer"],
+[data-testid="stCaptionContainer"] p {
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+/* Indicateurs : libellé en petites capitales, chiffres alignés */
+[data-testid="stMetricLabel"],
+[data-testid="stMetricLabel"] p {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+}
+
+[data-testid="stMetricValue"] {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+}
+
+[data-testid="stMetricDelta"] {
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Boutons sobres */
+.stButton button p,
+.stFormSubmitButton button p {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+/* ---------------------------------------------------------
+   12. BOUTONS : ÉTATS CLIC ET FOCUS
+   --------------------------------------------------------- */
+
+.stButton button:active,
+.stButton button:focus,
+.stButton button:focus:not(:active),
+.stFormSubmitButton button:active,
+.stFormSubmitButton button:focus,
+.stFormSubmitButton button:focus:not(:active) {
+    background: var(--button-bg) !important;
+    border-color: var(--button-bg) !important;
+    color: var(--button-text) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(183, 240, 90, 0.35) !important;
+}
+
+.stButton button:active,
+.stFormSubmitButton button:active {
+    filter: brightness(0.92);
+}
+
+.stButton button:active p,
+.stButton button:focus p,
+.stFormSubmitButton button:active p,
+.stFormSubmitButton button:focus p {
+    color: var(--button-text) !important;
+}
+
+
+/* ---------------------------------------------------------
+   13. ALERTES : LISIBILITÉ DANS LES DEUX THÈMES
+   --------------------------------------------------------- */
+
+/* Le conteneur externe porte le fond, la bordure et les coins arrondis */
+[data-testid="stAlert"] {
+    background: linear-gradient(160deg, var(--surface-bg-2, #0F2A1B), var(--surface-bg)) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 14px !important;
+    overflow: hidden;
+}
+
+/* Tous les éléments internes deviennent transparents :
+   c'est le fond du conteneur qui reste visible */
+[data-testid="stAlert"] div,
+[data-baseweb="notification"],
+[data-testid="stAlertContainer"] {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+/* Texte et icônes suivent le thème choisi */
+[data-testid="stAlert"] *,
+[data-baseweb="notification"] * {
+    color: var(--text-color) !important;
 }
