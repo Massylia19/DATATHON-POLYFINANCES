@@ -142,7 +142,7 @@ class StreamlitAppTests(unittest.TestCase):
             app = self.home_app().run()
             self.click_button(app, "Commencer une simulation")
             service.assert_not_called()
-            self.assertIn("Testez une idée. Comprenez ses effets.", rendered_text(app))
+            self.assertIn("Comparez deux proportions du même actif", rendered_text(app))
 
     def click_button(self, app, label):
         matching = [button for button in app.button if button.label == label]

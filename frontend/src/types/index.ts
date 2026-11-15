@@ -19,3 +19,6 @@ export interface ApiError { code: string; message: string; }
 export interface ComparisonResponse { status: "success" | "partial"; period: Analysis["period"]; variants: AnalysisResponse[]; warnings: string[]; }
 export type InterpretResponse = { status: "ready"; request: ScenarioRequest } | { status: "clarification" | "unavailable"; message: string } | { status: "error"; error: ApiError };
 export type FollowUpResponse = { status: "success"; answer: string; evidence_refs: string[]; origin: string } | { status: "error" | "unavailable"; message: string };
+export interface PublicEvidence { label: string; value: string; source?: string; role?: string; date?: string; url?: string; limitation?: string; }
+export interface EvidenceResponse { analysis_id: string; evidence: PublicEvidence[]; }
+export interface SavedScenario { id: string; saved_at: string; request: ScenarioRequest; }

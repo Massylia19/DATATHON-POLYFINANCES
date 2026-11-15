@@ -2,7 +2,7 @@
 
 > **Si je consacre X % de mon portefeuille à cet actif, qu'est-ce qui change et quels compromis dois-je comprendre compte tenu de mon profil ?**
 
-AlphaForge AI est un assistant de simulation. Il compare un portefeuille fictif **avant** et **après** l'ajout d'un actif, sur des données historiques réelles, puis vérifie la cohérence du changement avec le profil de l'investisseur et explique les compromis.
+AlphaForge AI est une application pédagogique de simulation. Elle compare un portefeuille fictif **avant** et **après** l'ajout d'un actif, sur des données historiques réelles, puis examine la cohérence du changement avec le profil et explique les compromis.
 
 > ⚠️ **Avertissement.** Il s'agit d'une comparaison historique hypothétique à but pédagogique. Ce n'est ni une prévision, ni une recommandation, ni un conseil en placement. Les personas et les portefeuilles sont fictifs.
 
@@ -19,16 +19,18 @@ L'interface permet aussi de tester n'importe quel actif du jeu de données, à n
 ### Architecture
 
 ```text
-Interface (app.py)
-   │  persona, actif, poids
+Interface React / TypeScript (frontend/)
+   │  profil, actif, poids
    ▼
-Agent IA sur AWS Bedrock ──► outil 1 : moteur de simulation   (alphaforge/engine.py)
-   │                     └─► outil 2 : contrôles du profil    (alphaforge/profile_checks.py)
+API FastAPI (api/)
+   │                     ├─► moteur de simulation            (alphaforge/engine.py)
+   │                     ├─► contrôles du profil              (alphaforge/profile_checks.py)
+   │                     └─► explication facultative (Bedrock)
    ▼
-Explication structurée : changements, cohérences, tensions, limites
+Résultat structuré : métriques, contrôles, preuves et limites
 ```
 
-Le **code calcule**, le **modèle explique**. Aucun chiffre n'est produit par le modèle de langage.
+Le **code calcule**, le **modèle explique**. Aucun chiffre n'est produit par le modèle de langage. Streamlit demeure disponible comme interface historique; le parcours principal est l'application React.
 
 ---
 
@@ -263,6 +265,15 @@ Les réponses nécessaires aux questions de suivi sont conservées dans la mémo
 du processus API pendant une heure, avec un maximum de 100 entrées. Elles sont
 perdues au redémarrage. Ce stockage convient à la démonstration locale avec un
 seul processus, pas à un déploiement multi-instance.
+
+Le parcours React comprend une vue d'ensemble, les profils fictifs, la simulation,
+la cohérence, l'assistant, les scénarios enregistrés et les sources. Aucune
+analyse n'est lancée avant une action explicite. Les questions de l'assistant
+sont indépendantes et liées à une analyse précise; aucun historique de chat
+n'est transmis. Les scénarios enregistrés sont conservés dans le `localStorage`
+de cet appareil et contiennent les paramètres et la date d'enregistrement, pas
+un instantané des résultats historiques. La résolution des preuves de l'analyse
+utilise le cache mémoire API et devient indisponible après son expiration.
 
 Vérifications frontend :
 
