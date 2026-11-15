@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import type { Analysis } from "../types";
 import { formatDate } from "../lib/format";
+import { InfoTip } from "./ui";
 
 const formatIndex = (value: number) =>
   value.toLocaleString("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -29,8 +30,12 @@ export function HistoricalChart({ analysis }: { analysis: Analysis }) {
   );
   return (
     <section className="chart-block">
-      <h3><LineChartIcon aria-hidden="true" />Évolution historique</h3>
-      <p className="chart-note">Indice en base 100 au début de la période — ce n’est pas une valeur en dollars.</p>
+      <h3>
+        <LineChartIcon aria-hidden="true" />Évolution historique
+        <InfoTip label="Que signifie base 100 ?" align="left">
+          Indice en base 100 au début de la période : les deux courbes partent de 100. Ce n’est pas une valeur en dollars.
+        </InfoTip>
+      </h3>
       <div className="chart" role="img" aria-label="Courbes historiques indexées en base 100, portefeuille initial en trait pointillé et portefeuille après l’ajout en trait continu">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 12, right: 12, bottom: 4, left: -10 }}>
@@ -82,8 +87,8 @@ export function HistoricalChart({ analysis }: { analysis: Analysis }) {
         </ResponsiveContainer>
       </div>
       <div className="legend" aria-label="Légende du graphique">
-        <span><i className="line before" />Portefeuille de départ — trait pointillé</span>
-        <span><i className="line after" />Après l’ajout — trait continu</span>
+        <span><i className="line before" />Portefeuille de départ</span>
+        <span><i className="line after" />Après l’ajout</span>
       </div>
       <details>
         <summary>Voir un tableau échantillonné des valeurs (base 100)</summary>

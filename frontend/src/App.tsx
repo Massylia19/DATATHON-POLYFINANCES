@@ -1,4 +1,5 @@
-import { ChevronRight, Menu, Moon, Sun, X } from "lucide-react";
+import { BookOpen, Bookmark, ChevronRight, FlaskConical, Home, Menu, Moon, ShieldCheck, Sparkles, Sun, Users, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./lib/api";
 import { scenarioKey } from "./lib/format";
@@ -34,14 +35,14 @@ type PageId =
   | "sources";
 
 const STORAGE_KEY = "alphaforge.scenarios.v1";
-const NAV_ITEMS: Array<{ id: PageId; label: string }> = [
-  { id: "overview", label: "Vue d’ensemble" },
-  { id: "profiles", label: "Profils fictifs" },
-  { id: "simulation", label: "Simuler un ajout" },
-  { id: "coherence", label: "Cohérence du scénario" },
-  { id: "assistant", label: "Assistant" },
-  { id: "scenarios", label: "Mes scénarios" },
-  { id: "sources", label: "Sources et méthode" },
+const NAV_ITEMS: Array<{ id: PageId; label: string; icon: LucideIcon; needsResult?: boolean }> = [
+  { id: "overview", label: "Vue d’ensemble", icon: Home },
+  { id: "profiles", label: "Profils fictifs", icon: Users },
+  { id: "simulation", label: "Simuler un ajout", icon: FlaskConical },
+  { id: "coherence", label: "Cohérence", icon: ShieldCheck, needsResult: true },
+  { id: "assistant", label: "Assistant", icon: Sparkles, needsResult: true },
+  { id: "scenarios", label: "Mes scénarios", icon: Bookmark },
+  { id: "sources", label: "Sources et méthode", icon: BookOpen },
 ];
 
 function isPageId(value: string): value is PageId {
@@ -385,7 +386,6 @@ function App() {
           <span className="brand-tag">Simulation fictive</span>
         </a>
         <div className="header-actions">
-          <span className="active-persona">{persona.name} · profil fictif</span>
           <button
             className="theme"
             aria-label={`Activer le thème ${theme === "dark" ? "clair" : "sombre"}`}
@@ -399,17 +399,27 @@ function App() {
       <div className="app-frame">
         <aside className={`sidebar ${mobileNavOpen ? "open" : ""}`}>
           <nav aria-label="Navigation principale">
-            {NAV_ITEMS.map(item => (
-              <button
-                type="button"
-                key={item.id}
-                className={page === item.id ? "active" : ""}
-                aria-current={page === item.id ? "page" : undefined}
-                onClick={() => navigate(item.id)}
-              >
-                {item.label}
-              </button>
-            ))}
+            {NAV_ITEMS.map(item => {
+              const Icon = item.icon;
+              const waiting = item.needsResult && scenarioStatus !== "done";
+              return (
+                <button
+                  type="button"
+                  key={item.id}
+                  className={[page === item.id ? "active" : "", waiting ? "waiting" : ""].join(" ").trim()}
+                  aria-current={page === item.id ? "page" : undefined}
+                  aria-describedby={waiting ? "nav-needs-result" : undefined}
+                  onClick={() => navigate(item.id)}
+                >
+                  <Icon aria-hidden="true" className="nav-icon" />
+                  <span className="nav-label">{item.label}</span>
+                  {item.needsResult && (
+                    <span className={`nav-dot dot-${scenarioStatus}`} aria-hidden="true" />
+                  )}
+                </button>
+              );
+            })}
+            <span id="nav-needs-result" className="sr-only">Disponible après une analyse à jour.</span>
           </nav>
           <button
             type="button"
@@ -491,6 +501,7 @@ function App() {
               assets={data.assets}
               onLoad={loadSavedScenario}
               onRemove={removeSavedScenario}
+              onNavigate={navigate}
             />
           )}
           {page === "sources" && <SourcesPage result={result} stale={stale} />}

@@ -1,4 +1,5 @@
 import * as Tabs from "@radix-ui/react-tabs";
+import { BarChart3, Bookmark, Lightbulb, RefreshCw } from "lucide-react";
 import { AlertTriangle, ArrowLeft, BookOpen, CheckCircle2, ChevronDown, Code2, Database, ExternalLink, GitCompare, HelpCircle, LineChart, ListChecks, PieChart, ShieldCheck, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -15,7 +16,7 @@ import type {
 import { api } from "../../lib/api";
 import { formatDate, formatRatio, formatWeight, scenarioKey } from "../../lib/format";
 import { checkStatusLabels, formatMissingInformation, positionLabel } from "../../lib/presentation";
-import { Badge, Button, Card, Spinner } from "../../components/ui";
+import { Badge, Button, Card, InfoTip, Spinner } from "../../components/ui";
 import { HistoricalChart } from "../../components/HistoricalChart";
 import { MetricCard } from "../../components/MetricCard";
 import { ContextBar } from "../../components/AnalysisContextBar";
@@ -36,13 +37,15 @@ const statusIcons: Record<ProfileCheck["status"], LucideIcon> = {
 };
 
 function EmptyResult({ stale }: { stale: boolean }) {
+  const Icon = stale ? RefreshCw : BarChart3;
   return (
     <div className="empty main-empty">
+      <Icon aria-hidden="true" className="empty-icon" />
       <h2>{stale ? "Le scénario a changé" : "Vos résultats apparaîtront ici"}</h2>
       <p>
         {stale
-          ? "Relancez la simulation pour obtenir un résultat correspondant aux paramètres actuels."
-          : "Choisissez un profil et un placement, puis lancez l’analyse. Aucun calcul n’est effectué automatiquement."}
+          ? "Relancez l’analyse pour mettre les résultats à jour."
+          : "Cliquez sur « Analyser le scénario » pour lancer le calcul."}
       </p>
     </div>
   );
@@ -73,31 +76,36 @@ export function SummaryPage({
       <Card className="result-summary">
         <div className="result-heading">
           <div>
-            <p className="eyebrow">Scénario analysé</p>
             <h2>{analysis.persona.name} · {addedAsset?.name ?? result.request.symbol} ({result.request.symbol})</h2>
             <p>
               {formatWeight(result.request.target_weight_pct)} du portefeuille ·{" "}
               {formatDate(analysis.period.start)} au {formatDate(analysis.period.end)} · CAD
             </p>
           </div>
-          <Button type="button" onClick={() => onSave(result.request)}>Enregistrer sur cet appareil</Button>
+          <div className="result-actions">
+            {result.status === "partial" && (
+              <span className="ai-badge ai-off" role="status">
+                <AlertTriangle aria-hidden="true" />IA indisponible
+                <InfoTip label="Pourquoi l’IA est indisponible">
+                  Calculs disponibles · explication IA indisponible. Les comparaisons proviennent du moteur de simulation.
+                </InfoTip>
+              </span>
+            )}
+            {result.status === "success" && (
+              <span className="ai-badge ai-on" role="status"><Sparkles aria-hidden="true" />Explication IA validée</span>
+            )}
+            <Button type="button" aria-label="Enregistrer sur cet appareil" onClick={() => onSave(result.request)}>
+              <Bookmark aria-hidden="true" /><span aria-hidden="true">Enregistrer</span>
+            </Button>
+          </div>
         </div>
-        {result.status === "partial" && (
-          <p className="notice" role="status">
-            Calculs disponibles · explication IA indisponible. Les comparaisons
-            ci-dessous proviennent du moteur de simulation.
-          </p>
-        )}
-        {result.status === "success" && (
-          <p className="success-note" role="status">Calculs et explication IA validés.</p>
-        )}
         <div className="metrics">
           <MetricCard metric="total_return" before={before.total_return} after={after.total_return} />
           <MetricCard metric="annualized_volatility" before={before.annualized_volatility} after={after.annualized_volatility} />
           <MetricCard metric="max_drawdown" before={before.max_drawdown} after={after.max_drawdown} />
         </div>
         <section className="summary-card">
-          <h3>Ce qu’il faut retenir</h3>
+          <h3><Lightbulb aria-hidden="true" />Ce qu’il faut retenir</h3>
           <p>{result.presentation?.summary ?? result.explanation?.summary ?? "Les indicateurs montrent le compromis historique de cet ajout. Ils ne prédisent pas les résultats futurs."}</p>
         </section>
         <Tabs.Root defaultValue="chart" className="result-tabs">
@@ -111,7 +119,6 @@ export function SummaryPage({
           <HistoricalChart analysis={analysis} />
           <section className="weights-panel" aria-labelledby="weights-title">
             <h3 id="weights-title"><PieChart aria-hidden="true" />Pondérations</h3>
-            <p className="chart-note">Avant → après l’ajout</p>
             <ul className="weight-bars">
               {Object.keys({ ...analysis.before.weights_by_asset_pct, ...analysis.after.weights_by_asset_pct })
                 .sort((a, b) => (analysis.after.weights_by_asset_pct[b] ?? 0) - (analysis.after.weights_by_asset_pct[a] ?? 0))
@@ -217,12 +224,11 @@ function EvidenceCards({
 export function CoherencePage({
   result,
   stale,
-  persona,
   onNavigate,
 }: {
   result: AnalysisResponse | null;
   stale: boolean;
-  persona: string;
+  persona?: string;
   onNavigate: (page: string) => void;
 }) {
   if (!result || stale) return <Card><EmptyResult stale={stale} /></Card>;
@@ -244,7 +250,6 @@ export function CoherencePage({
           <li className="count-insufficient"><HelpCircle aria-hidden="true" />{counts.insufficient_information} insuffisant{counts.insufficient_information > 1 ? "s" : ""}</li>
         </ul>
       </div>
-      <p className="help">Contrôles comparés à l’objectif déclaré de {persona}. Cliquez sur un contrôle pour le détail.</p>
       <div className="check-list">
         {result.checks.map((check: ProfileCheck) => {
           const StatusIcon = statusIcons[check.status];
@@ -316,7 +321,6 @@ export function SourcesPage({
     : "Disponible après le calcul d’un scénario.";
   return (
     <Card className="sources-page">
-      <p className="help">Simulation historique : elle ne prédit pas l’avenir et n’est pas une recommandation.</p>
       <div className="accordion-list">
         <details className="accordion-item">
           <summary>
@@ -488,7 +492,7 @@ export function ComparisonPage({
           <input type="number" min="1" max="50" step="0.5" value={bText} aria-invalid={!validWeight(bText, b)} onChange={event => setBText(event.target.value)} />
         </label>
         <Button className="primary" disabled={busy || invalid || !valid} onClick={() => void compare()}>
-          {busy ? <><Spinner />Comparaison…</> : "Comparer"}
+          {busy ? <><Spinner />Comparaison…</> : <><GitCompare aria-hidden="true" />Comparer</>}
         </Button>
       </div>
       {!valid && <p className="field-error">Choisissez deux poids distincts, de 1 % à 50 %, par pas de 0,5 %.</p>}

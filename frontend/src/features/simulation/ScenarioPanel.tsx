@@ -1,5 +1,5 @@
 import { AlertTriangle, Briefcase, Clock, Gauge, PenLine, PieChart, Play, Target } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   Asset,
   InterpretResponse,
@@ -14,7 +14,7 @@ import {
   positionLabel,
   previewAllocation,
 } from "../../lib/presentation";
-import { Button, Card, Spinner } from "../../components/ui";
+import { Button, Card, InfoTip, Spinner } from "../../components/ui";
 
 interface ScenarioPanelProps {
   personas: Persona[];
@@ -92,6 +92,31 @@ export function ScenarioPanel({
     onValidityChange(validForm);
   }, [validForm, onValidityChange]);
 
+  const barRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const openPopups = () =>
+      Array.from(barRef.current?.querySelectorAll<HTMLDetailsElement>("details.inline-pop[open]") ?? []);
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      openPopups().forEach(popup => {
+        if (!popup.contains(target)) popup.open = false;
+      });
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      openPopups().forEach(popup => {
+        popup.open = false;
+        popup.querySelector("summary")?.focus();
+      });
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
   const preview = useMemo(
     () => validForm && chosenAsset
       ? previewAllocation(
@@ -123,7 +148,7 @@ export function ScenarioPanel({
   const horizon = `${persona.horizon_years_min}${persona.horizon_years_max ? `–${persona.horizon_years_max} ans` : " ans et plus"}`;
 
   return (
-    <Card className="scenario-panel scenario-bar">
+    <Card className="scenario-panel scenario-bar" ref={barRef}>
       <h2 className="sr-only">Choisir une situation</h2>
       <div className="persona-row">
         <fieldset className="persona-fieldset">
@@ -220,7 +245,7 @@ export function ScenarioPanel({
               </button>
             ))}
         </div>
-        <p id="asset-status" className="help">
+        <p id="asset-status" className={chosenAsset ? "sr-only" : "help"}>
           {chosenAsset
             ? chosenAsset.asset_class_label
             : assetQuery
@@ -231,7 +256,12 @@ export function ScenarioPanel({
         </div>
 
         <div className="field weight-field">
-        <label htmlFor="weight-slider">Part du nouvel actif (%)</label>
+        <span className="label-row">
+          <label htmlFor="weight-slider">Part du nouvel actif (%)</label>
+          <InfoTip label="Comment la part est financée" align="left">
+            Pour faire de la place, les autres placements sont réduits dans les mêmes proportions. De 1 % à 50 %, par pas de 0,5 %.
+          </InfoTip>
+        </span>
         <div className="weight-controls">
           <input
             id="weight-slider"
@@ -256,7 +286,7 @@ export function ScenarioPanel({
             onChange={event => updateWeight(event.target.value)}
           />
         </div>
-        <p id="weight-help" className={validWeight ? "help" : "field-error"}>
+        <p id="weight-help" className={validWeight ? "sr-only" : "field-error"}>
           {validWeight
             ? "Les autres placements sont réduits dans les mêmes proportions."
             : "Saisissez un nombre de 1 % à 50 %, par pas de 0,5 %."}

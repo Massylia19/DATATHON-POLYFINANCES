@@ -1,3 +1,4 @@
+import { Bookmark, HardDrive, RotateCcw, Trash2 } from "lucide-react";
 import { AlertTriangle, ArrowRight, Clock, MessageCircleQuestion, Play, ShieldCheck, SlidersHorizontal, Users } from "lucide-react";
 import type { Asset, Persona, Portfolio, SavedScenario, Scenario } from "../types";
 import { formatDate, formatWeight } from "../lib/format";
@@ -114,7 +115,6 @@ export function OverviewPage(context: PageContext & { onNavigate: (page: string)
 
       <section className="quick-start" aria-labelledby="quick-start-title">
         <h2 id="quick-start-title">Démarrage rapide</h2>
-        <p className="help">Trois profils de démonstration, pas des personnes réelles.</p>
         <div className="quick-start-list">
           {context.personas.map(persona => (
             <button
@@ -155,10 +155,7 @@ export function OverviewPage(context: PageContext & { onNavigate: (page: string)
 export function ProfilesPage(context: PageContext & { onNavigate: (page: string) => void }) {
   return (
     <div className="page-stack">
-      <section className="page-intro compact">
-        <h1>Explorer des objectifs différents</h1>
-        <p className="help">Profils de démonstration : aucun revenu, capacité financière ni situation familiale.</p>
-      </section>
+      <h1 className="sr-only">Explorer des objectifs différents</h1>
       <div className="persona-grid profile-grid">
         {profileItems(context).map(({ persona, portfolio, scenario }) => (
           <ProfileCard
@@ -183,40 +180,50 @@ export function SavedScenariosPage({
   assets,
   onLoad,
   onRemove,
+  onNavigate,
 }: {
   saved: SavedScenario[];
   assets: Asset[];
   onLoad: (scenario: SavedScenario) => void;
   onRemove: (id: string) => void;
+  onNavigate?: (page: string) => void;
 }) {
   return (
     <Card className="saved-page">
-      <p className="eyebrow">Sauvegardés sur cet appareil</p>
-      <h1>Mes scénarios</h1>
-      <p>Les scénarios sont conservés dans le navigateur de cet appareil, pas dans un compte ni sur le serveur.</p>
       {saved.length === 0 ? (
-        <div className="empty">
+        <div className="empty saved-empty">
+          <Bookmark aria-hidden="true" className="empty-icon" />
           <h2>Aucun scénario enregistré</h2>
-          <p>Après une simulation, enregistrez ses paramètres pour les retrouver ici.</p>
+          <p>Après une analyse, cliquez sur « Enregistrer » pour le retrouver ici.</p>
+          {onNavigate && (
+            <Button className="primary" type="button" onClick={() => onNavigate("simulation")}>
+              <Play aria-hidden="true" />Lancer une simulation
+            </Button>
+          )}
         </div>
       ) : (
-        <div className="saved-list">
-          {saved.map(item => {
-            const personaId = item.request.persona_id;
-            return (
-              <article className="saved-item" key={item.id}>
-                <div>
-                  <h2>{personaId[0].toUpperCase() + personaId.slice(1)} · {positionLabel(item.request.symbol, assets)}</h2>
-                  <p>{formatWeight(item.request.target_weight_pct)} · enregistré le {formatDate(item.saved_at.slice(0, 10))}</p>
-                </div>
-                <div className="saved-actions">
-                  <Button type="button" onClick={() => onLoad(item)}>Rouvrir</Button>
-                  <Button type="button" onClick={() => onRemove(item.id)}>Supprimer</Button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+        <>
+          <p className="help saved-note"><HardDrive aria-hidden="true" className="inline-icon" />Conservés dans le navigateur de cet appareil, pas dans un compte ni sur le serveur.</p>
+          <div className="saved-list">
+            {saved.map(item => {
+              const personaId = item.request.persona_id;
+              const name = personaId[0].toUpperCase() + personaId.slice(1);
+              return (
+                <article className="saved-item" key={item.id}>
+                  <span className={`avatar avatar-${personaId}`} aria-hidden="true">{name.charAt(0)}</span>
+                  <div className="saved-text">
+                    <h2>{name} · {positionLabel(item.request.symbol, assets)}</h2>
+                    <p>{formatWeight(item.request.target_weight_pct)} · enregistré le {formatDate(item.saved_at.slice(0, 10))}</p>
+                  </div>
+                  <div className="saved-actions">
+                    <Button type="button" onClick={() => onLoad(item)}><RotateCcw aria-hidden="true" />Rouvrir</Button>
+                    <Button type="button" className="danger" onClick={() => onRemove(item.id)}><Trash2 aria-hidden="true" />Supprimer</Button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </>
       )}
     </Card>
   );

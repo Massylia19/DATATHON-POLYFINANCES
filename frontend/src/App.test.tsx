@@ -146,7 +146,6 @@ describe("parcours React AlphaForge", () => {
   it("explique les profils fictifs et la navigation avant toute analyse", async () => {
     renderApp();
     expect(await screen.findByRole("heading", { name: "Comprenez l’effet d’un changement de portefeuille." })).toBeInTheDocument();
-    expect(screen.getAllByText(/profils de démonstration/i).length).toBeGreaterThan(0);
     expect(screen.queryAllByText(/capacité à absorber une perte/i)).toHaveLength(0);
     expect(api.analyze).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Profils fictifs" }));

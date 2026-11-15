@@ -1,3 +1,4 @@
+import { MessageCircleQuestion, SendHorizontal, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type {
   AnalysisResponse,
@@ -8,7 +9,7 @@ import type {
 } from "../../types";
 import { api } from "../../lib/api";
 import { formatWeight } from "../../lib/format";
-import { Button, Card, Spinner } from "../../components/ui";
+import { Button, Card, InfoTip, Spinner } from "../../components/ui";
 import { ContextBar } from "../../components/AnalysisContextBar";
 
 const suggestions = [
@@ -44,6 +45,7 @@ export function AssistantPanel({
   onApplyProposal: (request: ScenarioRequest) => void;
 }) {
   const [question, setQuestion] = useState("");
+  const [pendingQuestion, setPendingQuestion] = useState("");
   const [answer, setAnswer] = useState<AnswerState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -66,7 +68,8 @@ export function AssistantPanel({
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
-    setQuestion(submittedQuestion);
+    setPendingQuestion(submittedQuestion);
+    setQuestion("");
     setBusy(true);
     setError("");
     setAnswer(null);
@@ -121,17 +124,96 @@ export function AssistantPanel({
   };
 
   const activeAnswer = answer?.analysisId === currentAnalysisId ? answer : null;
+  const shownQuestion = activeAnswer?.question ?? (busy || error ? pendingQuestion : "");
   return (
     <Card className="assistant-page">
-      <h2>Posez une question sur cette simulation</h2>
+      <header className="assistant-head">
+        <h2><Sparkles aria-hidden="true" />Posez une question sur cette simulation</h2>
+        {result && !stale && (
+          <div className="assistant-meta">
+            <ContextBar result={result} />
+            <InfoTip label="Comment l’assistant répond">
+              Chaque réponse s’appuie sur cette analyse et ses preuves. Les questions sont indépendantes; aucun historique de conversation n’est utilisé.
+            </InfoTip>
+          </div>
+        )}
+      </header>
       {result && !stale ? (
         <>
-          <ContextBar result={result} />
-          <p>
-            Chaque réponse s’appuie sur cette analyse et ses preuves. Les
-            questions sont indépendantes; aucun historique de conversation
-            n’est utilisé.
-          </p>
+          <div className="chat-thread" aria-live="polite">
+            {!shownQuestion && !error && (
+              <div className="chat-row bot">
+                <span className="chat-avatar" aria-hidden="true"><Sparkles /></span>
+                <div className="chat-bubble">
+                  <p>Je peux expliquer les résultats de {result.analysis.persona.name} avec {result.request.symbol}. Choisissez une question ou écrivez la vôtre.</p>
+                </div>
+              </div>
+            )}
+            {shownQuestion && (
+              <div className="chat-row user">
+                <div className="chat-bubble"><p>{shownQuestion}</p></div>
+              </div>
+            )}
+            {busy && (
+              <div className="chat-row bot">
+                <span className="chat-avatar" aria-hidden="true"><Sparkles /></span>
+                <div className="chat-bubble typing"><Spinner /><span>Réponse en cours…</span></div>
+              </div>
+            )}
+            {activeAnswer?.type === "answer" && (
+              <div className="chat-row bot">
+                <span className="chat-avatar" aria-hidden="true"><Sparkles /></span>
+                <div className="chat-bubble answer-card">
+                  {activeAnswer.response.status === "success"
+                    ? <p>{activeAnswer.response.answer}</p>
+                    : <p className="notice">{activeAnswer.response.message}</p>}
+                  {activeAnswer.response.status === "success" && activeAnswer.evidence.length > 0 && (
+                    <details className="chat-evidence">
+                      <summary>Voir les preuves ({activeAnswer.evidence.length})</summary>
+                      <div className="evidence-list">
+                        {activeAnswer.evidence.map((item, index) => (
+                          <article className="evidence-card" key={`${item.label}-${index}`}>
+                            <strong>{item.label}</strong>
+                            <p>{item.value}</p>
+                            {item.source && <p className="help">{item.source}{item.role ? ` — ${item.role}` : ""}{item.date ? ` · ${item.date}` : ""}</p>}
+                            {item.url && <a href={item.url} target="_blank" rel="noreferrer">Ouvrir la source originale</a>}
+                          </article>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              </div>
+            )}
+            {activeAnswer?.type === "proposal" && (
+              <div className="chat-row bot">
+                <span className="chat-avatar" aria-hidden="true"><Sparkles /></span>
+                <div className="chat-bubble proposal-card">
+                  <p className="eyebrow">Variante proposée</p>
+                  {activeAnswer.response.status === "ready" ? (
+                    <>
+                      <p>
+                        {result.analysis.persona.name} · {activeAnswer.response.request.symbol} ·{" "}
+                        {formatWeight(activeAnswer.response.request.target_weight_pct)}
+                      </p>
+                      <p className="help">Cette proposition ne calcule pas encore de résultat.</p>
+                      <Button className="primary" type="button" onClick={() => onApplyProposal(activeAnswer.response.status === "ready" ? activeAnswer.response.request : result.request)}>
+                        Appliquer au formulaire de simulation
+                      </Button>
+                    </>
+                  ) : (
+                    <p className="notice">
+                      {activeAnswer.response.status === "error"
+                        ? activeAnswer.response.error.message
+                        : activeAnswer.response.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            {error && <p className="field-error" role="alert">{error}</p>}
+          </div>
+
           <div className="suggestions" aria-label="Questions suggérées">
             {suggestions.map(item => (
               <button
@@ -140,79 +222,34 @@ export function AssistantPanel({
                 disabled={busy}
                 onClick={() => void ask(item)}
               >
-                {item}<span aria-hidden="true">›</span>
+                <Sparkles aria-hidden="true" />{item}
               </button>
             ))}
           </div>
-          <form onSubmit={event => { event.preventDefault(); void ask(); }}>
-            <label htmlFor="assistant-question">Votre question</label>
+          <form className="chat-form" onSubmit={event => { event.preventDefault(); void ask(); }}>
+            <label htmlFor="assistant-question" className="sr-only">Votre question</label>
             <input
               id="assistant-question"
               maxLength={500}
               value={question}
               onChange={event => setQuestion(event.target.value)}
-              placeholder="Ex. Pourquoi ce changement mérite-t-il attention ?"
+              placeholder="Écrivez votre question…"
               disabled={busy}
             />
-            <Button className="primary" type="submit" disabled={busy || !question.trim()}>
-              {busy ? <><Spinner />Réponse en cours…</> : "Envoyer la question"}
+            <Button className="primary" type="submit" aria-label="Envoyer la question" disabled={busy || !question.trim()}>
+              {busy ? <Spinner /> : <SendHorizontal aria-hidden="true" />}
+              <span aria-hidden="true">Envoyer</span>
             </Button>
           </form>
-          {error && <p className="field-error" role="alert">{error}</p>}
-          {busy && <p className="help" aria-live="polite">La réponse est préparée à partir des données et contrôles de cette analyse.</p>}
-          {activeAnswer?.type === "answer" && (
-            <section className="answer-card" aria-live="polite">
-              <p className="eyebrow">Votre question</p>
-              <p><b>{activeAnswer.question}</b></p>
-              {activeAnswer.response.status === "success"
-                ? <p>{activeAnswer.response.answer}</p>
-                : <p className="notice">{activeAnswer.response.message}</p>}
-              {activeAnswer.response.status === "success" && activeAnswer.evidence.length > 0 && (
-                <details open>
-                  <summary>Éléments qui appuient la réponse</summary>
-                  <div className="evidence-list">
-                    {activeAnswer.evidence.map((item, index) => (
-                      <article className="evidence-card" key={`${item.label}-${index}`}>
-                        <strong>{item.label}</strong>
-                        <p>{item.value}</p>
-                        {item.source && <p className="help">{item.source}{item.role ? ` — ${item.role}` : ""}{item.date ? ` · ${item.date}` : ""}</p>}
-                        {item.url && <a href={item.url} target="_blank" rel="noreferrer">Ouvrir la source originale</a>}
-                      </article>
-                    ))}
-                  </div>
-                </details>
-              )}
-            </section>
-          )}
-          {activeAnswer?.type === "proposal" && (
-            <section className="proposal-card" aria-live="polite">
-              <p className="eyebrow">Variante proposée</p>
-              {activeAnswer.response.status === "ready" ? (
-                <>
-                  <p>
-                    {result.analysis.persona.name} · {activeAnswer.response.request.symbol} ·{" "}
-                    {formatWeight(activeAnswer.response.request.target_weight_pct)}
-                  </p>
-                  <p>Cette proposition ne calcule pas encore de résultat.</p>
-                  <Button className="primary" type="button" onClick={() => onApplyProposal(activeAnswer.response.status === "ready" ? activeAnswer.response.request : result.request)}>
-                    Appliquer au formulaire de simulation
-                  </Button>
-                </>
-              ) : (
-                <p className="notice">
-                  {activeAnswer.response.status === "error"
-                    ? activeAnswer.response.error.message
-                    : activeAnswer.response.message}
-                </p>
-              )}
-            </section>
-          )}
         </>
       ) : (
-        <div className="empty">
-          {stale
-            ? "Les paramètres ont changé. Relancez l’analyse pour poser une question sur le bon scénario."
-            : "Lancez une simulation pour poser une question sur ses résultats."}
+        <div className="empty assistant-empty">
+          <MessageCircleQuestion aria-hidden="true" />
+          <p>
+            {stale
+              ? "Les paramètres ont changé. Relancez l’analyse pour poser une question sur le bon scénario."
+              : "Lancez une simulation pour poser une question sur ses résultats."}
+          </p>
         </div>
       )}
     </Card>
