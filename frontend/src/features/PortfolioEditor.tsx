@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Loader2, Plus, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, Loader2, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Asset, Bootstrap, CustomPortfolioResponse, PersonaId, Portfolio } from "../types";
 import { api } from "../lib/api";
@@ -148,11 +148,10 @@ export function PortfolioEditor({ data, onResult }: PortfolioEditorProps) {
             <button
               key={p.id}
               onClick={() => setSelectedPersonaId(p.id)}
-              className={`px-4 py-2 rounded-lg border transition-colors ${
-                selectedPersonaId === p.id
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-card text-card-foreground border-border hover:bg-accent"
-              }`}
+              className={`px-4 py-2 rounded-lg border transition-colors ${selectedPersonaId === p.id
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-card-foreground border-border hover:bg-accent"
+                }`}
             >
               {p.name}
             </button>
@@ -229,17 +228,15 @@ export function PortfolioEditor({ data, onResult }: PortfolioEditorProps) {
                 <button
                   key={asset.ticker}
                   onClick={() => handleToggleAsset(asset.ticker)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left ${
-                    selectedNewAssets.includes(asset.ticker)
-                      ? "bg-primary/10 border-primary"
-                      : "bg-card border-border hover:bg-accent"
-                  }`}
+                  className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left ${selectedNewAssets.includes(asset.ticker)
+                    ? "bg-primary/10 border-primary"
+                    : "bg-card border-border hover:bg-accent"
+                    }`}
                 >
-                  <div className={`w-5 h-5 rounded border flex items-center justify-center ${
-                    selectedNewAssets.includes(asset.ticker)
-                      ? "bg-primary border-primary"
-                      : "border-border"
-                  }`}>
+                  <div className={`w-5 h-5 rounded border flex items-center justify-center ${selectedNewAssets.includes(asset.ticker)
+                    ? "bg-primary border-primary"
+                    : "border-border"
+                    }`}>
                     {selectedNewAssets.includes(asset.ticker) && (
                       <Check className="w-3 h-3 text-primary-foreground" />
                     )}
