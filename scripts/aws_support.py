@@ -11,7 +11,7 @@ import sys
 from typing import Iterable
 
 
-AWS_REGION = "us-east-1"
+AWS_REGION = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
 REQUIRED_AWS_ENV_VARS = (
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",

@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: AlphaForge FastAPI on App Runner with an IAM role for Amazon Bedrock.
+
+Parameters:
+  ImageRepositoryUri:
+    Type: String
+    Description: ECR repository URI without an image tag.
+  ImageTag:
+    Type: String
+    Default: latest
+  FrontendOrigin:
+    Type: String
+    Description: HTTPS origin of the deployed React frontend, without a trailing slash.
+  BedrockModelId:
+    Type: String
+    Description: Bedrock model or inference profile ID used by AlphaForge.
+  BedrockResourceArn:
+    Type: String
+    Default: "*"
+    Description: Restrict this to the model or inference-profile ARN when known.
+
+Resources:
+  AppRunnerEcrAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+  AppRunnerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeConfiguredBedrockModel
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: !Ref BedrockResourceArn
+
+  ApiService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: alphaforge-api
+      SourceConfiguration:
+        AutoDeploymentsEnabled: false
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerEcrAccessRole.Arn
+        ImageRepository:
+          ImageIdentifier: !Sub "${ImageRepositoryUri}:${ImageTag}"
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8000"
+            RuntimeEnvironmentVariables:
+              - Name: AWS_REGION
+                Value: !Ref AWS::Region
+              - Name: AWS_DEFAULT_REGION
+                Value: !Ref AWS::Region
+              - Name: BEDROCK_MODEL_ID
+                Value: !Ref BedrockModelId
+              - Name: ALLOWED_ORIGINS
+                Value: !Ref FrontendOrigin
+      InstanceConfiguration:
+        Cpu: 1 vCPU
+        Memory: 2 GB
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      HealthCheckConfiguration:
+        Protocol: HTTP
+        Path: /api/health
+        Interval: 10
+        Timeout: 5
+        HealthyThreshold: 1
+        UnhealthyThreshold: 5
+
+Outputs:
+  ApiUrl:
+    Description: Public HTTPS URL of the AlphaForge API.
+    Value: !Sub "https://${ApiService.ServiceUrl}"
+  InstanceRoleArn:
+    Description: IAM role used by the running API; no AWS keys are stored in the app.
+    Value: !GetAtt AppRunnerInstanceRole.Arn

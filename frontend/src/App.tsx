@@ -11,6 +11,7 @@ import type {
   ScenarioRequest,
 } from "./types";
 import { ScenarioPanel } from "./features/simulation/ScenarioPanel";
+import { ChatWidget } from "./features/chat/ChatWidget";
 import {
   AssistantPage,
   CoherencePage,
@@ -99,6 +100,7 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [savedScenarios, setSavedScenarios] = useState<SavedScenario[]>(loadSavedScenarios);
   const [storageError, setStorageError] = useState("");
+  const [chatOpen, setChatOpen] = useState(false);
   const requestNumber = useRef(0);
   const interpretationNumber = useRef(0);
   const draftRef = useRef<ScenarioRequest | null>(null);
@@ -483,7 +485,7 @@ function App() {
             <CoherencePage result={result} stale={stale} persona={persona.name} onNavigate={navigate} />
           )}
           {page === "assistant" && (
-            <AssistantPage result={result} stale={stale} onApplyProposal={applyProposal} />
+            <AssistantPage result={result} stale={stale} onApplyProposal={applyProposal} onOpenConversation={() => setChatOpen(true)} />
           )}
           {page === "scenarios" && (
             <SavedScenariosPage
@@ -497,6 +499,14 @@ function App() {
           <footer className="legal-footer">Simulation pédagogique · aucune transaction réelle · le passé ne prédit pas l’avenir.</footer>
         </main>
       </div>
+      <ChatWidget
+        persona={persona}
+        analysisId={!stale ? result?.analysis_id ?? null : null}
+        analysisLabel={!stale && result ? `${result.request.symbol} · ${result.request.target_weight_pct} %` : undefined}
+        stale={Boolean(stale && result)}
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+      />
     </div>
   );
 }

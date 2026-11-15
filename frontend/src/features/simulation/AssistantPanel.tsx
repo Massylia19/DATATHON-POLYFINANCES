@@ -38,10 +38,12 @@ export function AssistantPanel({
   result,
   stale,
   onApplyProposal,
+  onOpenConversation,
 }: {
   result: AnalysisResponse | null;
   stale: boolean;
   onApplyProposal: (request: ScenarioRequest) => void;
+  onOpenConversation: () => void;
 }) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<AnswerState | null>(null);
@@ -124,6 +126,7 @@ export function AssistantPanel({
   return (
     <Card className="assistant-page">
       <h2>Posez une question sur cette simulation</h2>
+      <Button type="button" onClick={onOpenConversation}>Ouvrir la conversation</Button>
       {result && !stale ? (
         <>
           <ContextBar result={result} />
