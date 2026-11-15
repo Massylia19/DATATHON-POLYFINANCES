@@ -131,20 +131,25 @@ class StreamlitAppTests(unittest.TestCase):
     def app(self):
         return AppTest.from_file(str(PROJECT_ROOT / "app.py"), default_timeout=60)
 
+    def click_button(self, app, label):
+        matching = [button for button in app.button if button.label == label]
+        self.assertEqual(len(matching), 1, f"Expected one button labelled {label!r}")
+        matching[0].click().run()
+
     def test_branding_identifies_agent_instead_of_mock_data(self):
         app = self.app().run()
         text = rendered_text(app)
 
-        self.assertIn("AlphaForge AI · Agent Bedrock", text)
+        self.assertIn("Simulation fictive · aucune transaction réelle.", text)
         self.assertNotIn("Maquette · données fictives", text)
 
     def run_scenario(self, persona_name, symbol, weight):
         app = self.app().run()
         if persona_name != "Amira":
-            app.selectbox[0].set_value(persona_name).run()
-        app.selectbox[1].set_value(symbol)
+            self.click_button(app, f"Choisir {persona_name}")
+        app.selectbox[0].set_value(symbol)
         app.slider[0].set_value(float(weight))
-        app.button[0].click().run()
+        self.click_button(app, "Analyser le scénario")
         self.assertFalse(app.exception)
         return app
 
@@ -154,10 +159,117 @@ class StreamlitAppTests(unittest.TestCase):
             app = self.app().run()
             self.assertFalse(app.exception)
             service.assert_not_called()
-            app.button[0].click().run()
+            self.click_button(app, "Analyser le scénario")
             service.assert_called_once_with("amira", "NVDA", 10.0)
-            self.assertTrue(any("rapport est prêt" in item.value for item in app.success))
+            self.assertTrue(any("explication Bedrock validée" in item.value for item in app.success))
             app.run()
+            self.assertEqual(service.call_count, 1)
+
+    def test_comparison_runs_only_on_request_and_keeps_a_common_period(self):
+        first = response_for("amira", "NVDA", 5, status="partial")
+        second = response_for("amira", "NVDA", 20, status="partial")
+        comparison = {
+            "status": "partial",
+            "period": first["analysis"]["period"],
+            "variants": [first, second],
+            "warnings": [],
+        }
+        with patch("agent.service.analyze_comparison") as service:
+            service.return_value = comparison
+            app = self.app().run()
+            service.assert_not_called()
+            self.click_button(app, "Comparer les variantes")
+            service.assert_called_once_with("amira", "NVDA", 5.0, 20.0)
+            self.assertTrue(
+                any("mêmes dates" in item.value for item in app.caption)
+            )
+            app.radio[0].set_value("Clair").run()
+            self.assertEqual(service.call_count, 1)
+
+    def test_natural_language_parameters_require_a_separate_analysis_click(self):
+        parsed_request = {
+            "persona_id": "amira",
+            "symbol": "NVDA",
+            "target_weight_pct": 15.0,
+        }
+        with (
+            patch("agent.service.interpret_scenario_request") as interpreter,
+            patch("agent.service.analyze_request") as service,
+        ):
+            interpreter.return_value = {
+                "status": "ready",
+                "request": parsed_request,
+            }
+            service.return_value = response_for("amira", "NVDA", 15)
+            app = self.app().run()
+            app.text_input[0].set_value(
+                "Pour Amira, tester 15 % de NVIDIA."
+            ).run()
+            self.click_button(app, "Comprendre la demande")
+            interpreter.assert_called_once_with(
+                "Pour Amira, tester 15 % de NVIDIA.",
+                root=PROJECT_ROOT,
+            )
+            service.assert_not_called()
+            self.assertTrue(
+                any("Paramètres compris" in item.value for item in app.success)
+            )
+            self.click_button(app, "Analyser le scénario")
+            service.assert_called_once_with("amira", "NVDA", 15.0)
+
+    def test_follow_up_percentage_requires_recalculation_after_confirmation(self):
+        follow_up = {
+            "status": "ready",
+            "request": {
+                "persona_id": "amira",
+                "symbol": "NVDA",
+                "target_weight_pct": 5.0,
+            },
+        }
+        with (
+            patch("agent.service.interpret_scenario_request") as interpreter,
+            patch("agent.service.answer_follow_up") as answer,
+            patch("agent.service.analyze_request") as service,
+        ):
+            interpreter.return_value = follow_up
+            service.return_value = response_for("amira", "NVDA", 10)
+            app = self.run_scenario("Amira", "NVDA", 10)
+            app.text_input[1].set_value("Et avec 5 % ?").run()
+            self.click_button(app, "Répondre à ma question")
+            interpreter.assert_called_once()
+            answer.assert_not_called()
+            service.assert_called_once_with("amira", "NVDA", 10.0)
+            self.assertTrue(
+                any("Nouvelle variante comprise" in item.value for item in app.info)
+            )
+            self.click_button(app, "Utiliser cette variante")
+            self.assertEqual(service.call_count, 1)
+            self.assertEqual(app.slider[0].value, 5.0)
+
+    def test_follow_up_answer_uses_current_report_without_reanalysis(self):
+        response = response_for("amira", "NVDA", 10)
+        with (
+            patch("agent.service.answer_follow_up") as answer,
+            patch("agent.service.analyze_request") as service,
+        ):
+            service.return_value = response
+            answer.return_value = {
+                "status": "success",
+                "answer": (
+                    "Les fluctuations observées reflètent des mouvements "
+                    "historiques et ne prédisent pas une perte future."
+                ),
+                "evidence_refs": ["analysis.after.metrics.annualized_volatility"],
+                "origin": "bedrock_converse",
+            }
+            app = self.run_scenario("Amira", "NVDA", 10)
+            app.text_input[1].set_value("Pourquoi le risque change-t-il ?").run()
+            self.click_button(app, "Répondre à ma question")
+            answer.assert_called_once()
+            service.assert_called_once_with("amira", "NVDA", 10.0)
+            self.assertIn("ne prédisent pas une perte future", rendered_text(app))
+            app.radio[0].set_value("Clair").run()
+            self.assertEqual(answer.call_count, 1)
             self.assertEqual(service.call_count, 1)
 
     def test_main_view_filters_raw_prose_and_uses_structured_comparisons(self):
@@ -168,7 +280,7 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertEqual(len(app.metric), 3)
 
             for heading in (
-                "Votre simulation",
+                "Scénario analysé",
                 "En quelques mots",
                 "Comparaisons avant/après",
                 "Ce que cela signifie pour le profil",
@@ -176,7 +288,8 @@ class StreamlitAppTests(unittest.TestCase):
             ):
                 self.assertIn(heading, [item.value for item in app.subheader])
             self.assertIn(
-                "Vous ajoutez **NVIDIA** à hauteur de **10 %** du portefeuille d’Amira.",
+                "Dans cette simulation, Amira consacre **10 %** de son portefeuille "
+                "à **NVIDIA — NVDA**. Les autres positions diminuent proportionnellement.",
                 page_text,
             )
             self.assertIn("12 novembre 2021", page_text)
@@ -243,9 +356,9 @@ class StreamlitAppTests(unittest.TestCase):
                 "error": {"code": "UNKNOWN_SYMBOL", "message": "Actif inconnu."},
             }
             app = self.app().run()
-            app.button[0].click().run()
+            self.click_button(app, "Analyser le scénario")
             self.assertFalse(app.exception)
-            self.assertTrue(any("relancez l’analyse" in item.value for item in app.error))
+            self.assertTrue(any("réessayez" in item.value for item in app.error))
             self.assertFalse(any("Détails techniques" == item.label for item in app.expander))
             self.assertEqual(len(app.metric), 0)
             app.toggle[0].set_value(True).run()
@@ -284,7 +397,7 @@ class StreamlitAppTests(unittest.TestCase):
         with patch("agent.service.analyze_request") as service:
             service.return_value = response_for()
             app = self.app().run()
-            app.button[0].click().run()
+            self.click_button(app, "Analyser le scénario")
             app.radio[0].set_value("Clair").run()
             self.assertFalse(app.exception)
             self.assertEqual(service.call_count, 1)
@@ -376,17 +489,21 @@ class StreamlitAppTests(unittest.TestCase):
 
         with patch("agent.service.analyze_request", side_effect=fake_service) as service:
             app = self.app().run()
-            app.button[0].click().run()
-            app.selectbox[0].set_value("Robert").run()
+            self.click_button(app, "Analyser le scénario")
+            self.click_button(app, "Choisir Robert")
             self.assertEqual(service.call_count, 1)
-            self.assertTrue(any("un autre scénario" in item.value for item in app.warning))
-            self.assertTrue(any("Amira · NVIDIA · 10 %" in item.value for item in app.markdown))
-            app.selectbox[1].set_value("TSLA")
+            self.assertTrue(any("rapport précédent" in item.value for item in app.warning))
+            self.assertFalse(any(item.label == "Gain sur la période" for item in app.metric))
+            app.selectbox[0].set_value("TSLA")
             app.slider[0].set_value(5.0)
-            app.button[0].click().run()
+            self.click_button(app, "Analyser le scénario")
             self.assertEqual(service.call_count, 2)
             service.assert_called_with("robert", "TSLA", 5.0)
-            self.assertTrue(any("Robert · Tesla · 5 %" in item.value for item in app.markdown))
+            self.assertIn(
+                "Dans cette simulation, Robert consacre **5 %** de son portefeuille "
+                "à **Tesla — TSLA**.",
+                rendered_text(app),
+            )
 
 
 if __name__ == "__main__":

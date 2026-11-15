@@ -186,7 +186,7 @@ Avec *V₀ … Vₙ* les valeurs du portefeuille et *rₜ = Vₜ / Vₜ₋₁ �
 
 ### 6. Vérifications
 
-Le dépôt contient 49 tests automatisés. Les calculs sont vérifiés sur des exemples simples calculés à la main, indépendamment des données réelles :
+Les tests automatisés vérifient les calculs, les contrats de l'agent et les parcours AppTest. Ils incluent des exemples simples calculés à la main, indépendamment des données réelles :
 
 - conversion : un prix de 10 USD un jour sans taux, entre un taux de 1,25 la veille et de 1,30 le lendemain, donne **12,50 CAD** et non 13,00 ;
 - indicateurs : la série [100, 110, 99] donne un rendement de **−1 %**, une baisse maximale de **−10 %** et une volatilité de √0,02 × √252 ;
@@ -215,13 +215,15 @@ Ce que les chiffres montrent, sans constituer un verdict :
 
 ## Contrôles du profil et preuves ESG
 
-> _À compléter par la Personne 4 : contrôles par persona, statuts `consistent` / `tension` / `insufficient_information`, preuves ESG utilisées (source, date, limites), seuils choisis par l'équipe, tests d'acceptation, lien vers le résumé d'une page._
+Les contrôles sont exécutés par `alphaforge/profile_checks.py`. Ils conservent les statuts `consistent`, `tension` et `insufficient_information` ainsi que les preuves et les informations manquantes propres à chaque contrôle. Une information absente n'est pas transformée en conclusion positive ou négative. Les limites et références ESG datées sont conservées dans le rapport détaillé.
 
 ---
 
 ## Agent IA et AWS
 
-> _À compléter par la Personne 2 : architecture de l'agent, outils appelés, modèle Bedrock et région (sans secret ni identifiant), commandes pour lancer et tester l'agent, comportement en cas d'échec AWS (statut `partial`), exemple de `tool_trace`._
+`agent.service.analyze_request` orchestre deux outils locaux déterministes : `simulate_portfolio_change`, puis `check_profile`. Bedrock Converse produit ensuite une explication structurée, validée par rapport aux preuves et métriques du moteur. Une demande en langage naturel peut être interprétée séparément; le code vérifie le profil, l'actif et le pourcentage explicite avant d'afficher les paramètres à confirmer. Les questions de suivi utilisent le scénario et les preuves actuellement affichés.
+
+Sans modèle configuré ou si Bedrock est indisponible, le service conserve les calculs et les contrôles avec le statut `partial`. Il ne présente pas un texte de remplacement comme une réponse du modèle. La comparaison A/B exécute deux analyses indépendantes du même actif et bloque l'affichage si leurs dates ne correspondent pas.
 
 Diagnostic de l'accès AWS : voir [docs/aws_bedrock_diagnostic.md](docs/aws_bedrock_diagnostic.md).
 
@@ -229,9 +231,9 @@ Diagnostic de l'accès AWS : voir [docs/aws_bedrock_diagnostic.md](docs/aws_bedr
 
 ## Interface
 
-L'interface Streamlit (`app.py`, styles dans `styles/style.css`) permet de simuler l'ajout d'un actif au portefeuille fictif d'un persona et de lire les résultats sans passer par la ligne de commande. Elle appelle `agent.service.analyze_request`, qui orchestre le moteur, les contrôles du profil et l'explication Bedrock validée.
+L'interface Streamlit (`app.py`, styles dans `styles/style.css`) guide l'utilisateur à travers trois étapes : choisir un personnage fictif, décrire un ajout d'actif, puis comprendre les résultats calculés. Les cartes des profils reprennent uniquement les objectifs, horizons et préférences documentés. Les autres paramètres sont modifiables depuis l'interface.
 
-Les profils et portefeuilles fournis dans le dépôt sont des données de démonstration; les prix historiques proviennent des fichiers de marché du projet. À la soumission du formulaire, l'interface appelle le véritable service AlphaForge. Celui-ci utilise Bedrock Converse si `BEDROCK_MODEL_ID` et les identifiants AWS sont configurés. Les réponses simulées sont réservées aux tests; elles ne sont pas utilisées par l'application.
+Les profils et portefeuilles fournis dans le dépôt sont des données de démonstration; les prix historiques proviennent des fichiers de marché du projet. L'application n'exécute aucune transaction. À la demande explicite de l'utilisateur, elle appelle le service AlphaForge; celui-ci utilise Bedrock Converse si `BEDROCK_MODEL_ID` et des identifiants AWS valides sont configurés. Les réponses simulées sont réservées aux tests; elles ne sont pas utilisées par l'application.
 
 ### Lancement
 
@@ -266,23 +268,26 @@ Streamlit affiche l'adresse de l'application dans le terminal, par défaut <http
 
 1. **Choisir le thème (facultatif).** Le sélecteur dans la barre latérale permet de passer de l'affichage Clair à l'affichage Sombre.
 
-2. **Choisir un persona.** Utiliser le sélecteur du bandeau supérieur pour choisir Amira, Mateo ou Robert. La barre latérale rappelle son objectif, son horizon et donne accès au portefeuille fictif initial.
+2. **Choisir une situation fictive.** Choisir la carte d'Amira, Mateo ou Robert. La carte résume son objectif, son horizon et ses préférences documentés; la barre latérale donne accès au portefeuille fictif initial. La saisie en langage naturel est facultative.
 
-3. **Ajouter un actif.** Dans le formulaire :
+3. **Décrire le changement.**
    - « Actif » : choisir un actif de `data/market/assets_universe.csv` que le persona ne détient pas déjà. Un actif est proposé par défaut, selon le scénario de référence de `data/scenarios.json`;
-   - « Poids cible (%) » : régler le poids de l'actif ajouté, de 1 % à 50 % par pas de 0,5 %. Ce poids est financé par une réduction proportionnelle des positions existantes.
+   - « Part du portefeuille (%) » : régler le poids de l'actif ajouté, de 1 % à 50 % par pas de 0,5 %. Ce poids est financé par une réduction proportionnelle des positions existantes;
+   - l'aperçu du scénario affiche le nom complet et le symbole avant calcul. Pour une demande en langage naturel, les paramètres compris doivent être vérifiés avant de cliquer sur « Analyser le scénario ».
 
 4. **Lancer l'analyse.** Cliquer sur « Analyser le scénario ». Un seul appel au service orchestre la simulation historique, les contrôles et l'explication Bedrock.
 
-5. **Lire le tableau de bord**, organisé comme la maquette AlphaForge :
-   - **Votre simulation** : nom complet de l'actif, poids ajouté, réduction proportionnelle des autres placements, dates en français et montants en dollars canadiens;
+5. **Lire le rapport** :
+   - **Scénario analysé** : nom complet de l'actif, poids ajouté, réduction proportionnelle des autres placements, dates en français et résultats en dollars canadiens;
    - les trois **comparaisons avant/après** et la **courbe historique** dans la zone principale;
    - **L'éclairage de l'agent** : compromis relié au profil, constats et informations manquantes;
    - **Ce qui change** : accès aux pondérations détaillées;
    - **Comprendre le calcul** et **Consulter les sources** : sections repliées;
    - **Mode technique** (désactivé par défaut) : preuves, valeurs brutes, contrôles individuels, données et traces destinés à l'équipe et au jury.
 
-6. **Explorer d'autres scénarios.** Modifier l'actif ou le poids, ou changer de persona, puis relancer explicitement l'analyse. Le dernier résultat reste en session lors d'un changement de thème ou d'un rerun et aucun nouvel appel AWS n'est effectué sans soumission. Si le formulaire diffère de la demande conservée, l'interface le signale.
+6. **Comparer ou approfondir.** Comparer deux poids du même actif sur les mêmes dates, ou poser une question liée au rapport. Une question qui propose un autre pourcentage doit passer par l'interprétation, puis un nouveau calcul explicite; le modèle n'est pas autorisé à estimer le résultat.
+
+7. **Explorer d'autres scénarios.** Modifier l'actif, le poids ou le personnage, puis relancer explicitement l'analyse. Le dernier résultat reste en session lors d'un changement de thème ou d'un rerun; aucun nouvel appel AWS n'est effectué sans action explicite. Si les paramètres changent, l'ancien rapport est masqué jusqu'au nouveau calcul.
 
 ### Ce que l'interface affiche et ne fait pas
 
@@ -298,7 +303,27 @@ Les thèmes Clair et Sombre sont définis dans `app.py` (dictionnaire `THEMES`, 
 
 ### Captures d'écran et démonstration
 
-> _À ajouter : captures d'écran de l'interface (choix du persona, formulaire, résultats, contrôles du profil) et lien vers la vidéo de démonstration._
+#### Parcours oral de 3 à 5 minutes
+
+1. **Le problème (30 s)** — Les chiffres d'un portefeuille ne suffisent pas à expliquer les compromis et les inconnues.
+2. **Amira (45 s)** — Choisir sa carte et saisir « Pour Amira, tester 15 % de NVIDIA ». Montrer les paramètres compris avant de lancer l'analyse.
+3. **Résultat calculé (60 s)** — Montrer les trois comparaisons historiques, la courbe, le lien avec l'objectif de croissance et l'exposition indirecte aux FNB qui reste inconnue.
+4. **Variante A/B (45 s)** — Comparer deux poids du même actif; vérifier que la période commune est affichée et que les résultats changent.
+5. **Question de suivi (45 s)** — Demander « Et avec 5 % ? », vérifier la variante comprise, l'appliquer et relancer explicitement le moteur.
+6. **Autre profil et limites (45 s)** — Choisir Robert avec TSLA, puis rappeler qu'il s'agit d'une simulation historique, sans frais, sans prévision et sans transaction réelle. Montrer les sources et, brièvement, le mode technique.
+
+#### Mode de secours sans AWS
+
+Depuis un terminal PowerShell, sans identifiants AWS ni `BEDROCK_MODEL_ID` :
+
+```powershell
+Remove-Item Env:BEDROCK_MODEL_ID -ErrorAction SilentlyContinue
+python -m streamlit run app.py
+```
+
+Le moteur local conserve les résultats et les contrôles avec le statut `partial`. La compréhension du langage naturel et les réponses Bedrock de suivi sont signalées indisponibles; sélectionner le personnage, l'actif et le poids manuellement. Ne pas présenter cette démonstration hors ligne comme une réponse du modèle. La comparaison A/B fonctionne localement et affiche ses calculs sur une période identique.
+
+Les captures d'écran et la vidéo officielle de démonstration restent à produire.
 
 ---
 

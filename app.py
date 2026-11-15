@@ -10,9 +10,15 @@ import streamlit as st
 try:
     from agent.context import create_request_context
     from agent.evidence import resolve_evidence_reference
-    from agent.service import analyze_request
+    from agent.service import (
+        answer_follow_up,
+        analyze_comparison,
+        analyze_request,
+        interpret_scenario_request,
+    )
     from alphaforge.engine import load_asset_universe
     from alphaforge.presentation import (
+        ASSET_CLASS_LABELS,
         CHECK_TITLE_LABELS,
         METRIC_PRESENTATION,
         SOURCE_PRESENTATION,
@@ -20,6 +26,7 @@ try:
         build_main_summary,
         describe_metric_change,
         format_date_fr,
+        format_preferences,
         format_rate,
         format_weight,
         format_weight_delta,
@@ -28,6 +35,7 @@ try:
         missing_information_phrases,
         persona_possessive,
         readable_label,
+        RISK_LEVEL_LABELS,
     )
 
     ENGINE_AVAILABLE = True
@@ -86,6 +94,20 @@ def request_key(persona_id: str, symbol: str, weight: float) -> dict:
     }
 
 
+def select_persona(persona_id: str, scenarios: dict[str, dict]) -> None:
+    scenario = scenarios[persona_id]
+    st.session_state["selected_persona_id"] = persona_id
+    st.session_state["selected_symbol"] = scenario["symbol"]
+    st.session_state["target_weight"] = float(scenario["target_weight_pct"])
+
+
+def apply_intent_request(request: dict) -> None:
+    st.session_state["selected_persona_id"] = request["persona_id"]
+    st.session_state["selected_symbol"] = request["symbol"]
+    st.session_state["target_weight"] = float(request["target_weight_pct"])
+    st.session_state["pending_intent"] = request
+
+
 def render_evidence_references(
     references: list[str], request: dict, response: dict, *, inside_expander: bool = False
 ) -> None:
@@ -118,13 +140,20 @@ def render_simulation(analysis: dict, asset: dict) -> None:
     persona = analysis["persona"]
     scenario = analysis["scenario"]
     asset_name = asset.get("name", "cet actif")
-    st.subheader("Votre simulation")
-    st.write(
-        f"Vous ajoutez **{asset_name}** à hauteur de "
-        f"**{format_weight(scenario['target_weight_pct'])}** du portefeuille "
-        f"{persona_possessive(persona.get('name', ''))}."
+    symbol = scenario["added_symbol"]
+    asset_type = readable_label(
+        asset.get("asset_class", ""),
+        ASSET_CLASS_LABELS,
     )
-    st.write("Les autres placements diminuent proportionnellement.")
+    st.subheader("Scénario analysé")
+    st.write(
+        f"Dans cette simulation, {persona['name']} consacre "
+        f"**{format_weight(scenario['target_weight_pct'])}** de son portefeuille "
+        f"à **{asset_name} — {symbol}**. Les autres positions diminuent "
+        "proportionnellement."
+    )
+    if asset_type != "Autre information à vérifier":
+        st.caption(f"{asset_type} · Portefeuille fictif")
     currency = (
         "dollars canadiens"
         if analysis.get("currency") == "CAD"
@@ -132,7 +161,8 @@ def render_simulation(analysis: dict, asset: dict) -> None:
     )
     st.caption(
         f"Du {format_date_fr(analysis['period']['start'])} au "
-        f"{format_date_fr(analysis['period']['end'])} · Montants en {currency}."
+        f"{format_date_fr(analysis['period']['end'])} · "
+        f"Résultats exprimés en {currency}."
     )
 
 
@@ -208,6 +238,89 @@ def render_chart(analysis: dict, asset_name: str) -> None:
         )
     else:
         st.warning("La courbe n’est pas disponible pour ce scénario.")
+
+
+def render_variant_comparison(
+    response: dict, assets: dict[str, dict], persona: dict
+) -> None:
+    if response.get("status") == "partial":
+        st.warning(
+            "Les calculs sont disponibles, mais au moins une explication "
+            "Bedrock est indisponible."
+        )
+    variants = response.get("variants", [])
+    if len(variants) != 2:
+        st.error("Les deux variantes ne sont pas disponibles.")
+        return
+    analyses = [variant.get("analysis") for variant in variants]
+    if any(not isinstance(analysis, dict) for analysis in analyses):
+        st.error("Les résultats calculés des deux variantes sont requis.")
+        return
+
+    weight_labels = [
+        format_weight(analysis["scenario"]["target_weight_pct"])
+        for analysis in analyses
+    ]
+    symbol = analyses[0]["scenario"]["added_symbol"]
+    asset_name = assets.get(symbol, {}).get("name", symbol)
+    asset_label = f"{asset_name} — {symbol}"
+    st.caption(
+        f"{format_date_fr(response['period']['start'])} au "
+        f"{format_date_fr(response['period']['end'])} · "
+        f"mêmes dates pour les deux variantes"
+    )
+    rows = []
+    for metric_key, presentation in METRIC_PRESENTATION.items():
+        rows.append(
+            {
+                "Indicateur": presentation["title"],
+                f"Variante {weight_labels[0]}": format_rate(
+                    analyses[0]["after"]["metrics"][metric_key]
+                ),
+                f"Variante {weight_labels[1]}": format_rate(
+                    analyses[1]["after"]["metrics"][metric_key]
+                ),
+            }
+        )
+    st.dataframe(rows, hide_index=True, width="stretch")
+    st.line_chart(
+        {
+            "Date": analyses[0]["series"]["dates"],
+            "Portefeuille initial": analyses[0]["series"]["before"],
+            f"{asset_label} à {weight_labels[0]}": analyses[0]["series"]["after"],
+            f"{asset_label} à {weight_labels[1]}": analyses[1]["series"]["after"],
+        },
+        x="Date",
+        y=[
+            "Portefeuille initial",
+            f"{asset_label} à {weight_labels[0]}",
+            f"{asset_label} à {weight_labels[1]}",
+        ],
+    )
+    variant_columns = st.columns(2)
+    for column, label, weight_label, variant, analysis in zip(
+        variant_columns,
+        ("A", "B"),
+        weight_labels,
+        variants,
+        analyses,
+    ):
+        with column.container(border=True):
+            st.subheader(f"Variante {label} · {weight_label}")
+            st.write(
+                build_main_summary(
+                    analysis,
+                    persona,
+                    asset_name,
+                    variant.get("explanation"),
+                )
+            )
+            render_priorities(
+                persona,
+                variant.get("checks") or [],
+                variant.get("explanation"),
+                asset_name,
+            )
 
 
 def fund_composition_is_unknown(checks: list[dict]) -> bool:
@@ -442,6 +555,13 @@ color_scheme = "dark" if theme == "Sombre" else "light"
 st.html(
     f"<style>:root {{ {variables} color-scheme: {color_scheme}; }} {css}</style>")
 
+if not ENGINE_AVAILABLE:
+    st.error(
+        "Les composants AlphaForge ne sont pas disponibles. "
+        "Installez les dépendances du projet, puis relancez l’application."
+    )
+    st.stop()
+
 st.html('<div id="overview"></div>')
 try:
     personas = read_json(DATA_DIR / "personas.json")["personas"]
@@ -458,22 +578,83 @@ except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
     st.error(f"Impossible de charger les données du projet : {exc}")
     st.stop()
 
-persona_by_name = {persona["name"]: persona for persona in personas}
-topbar = st.columns([2.2, 1.1, 1.0])
-with topbar[0]:
-    st.caption("Comprendre avant de décider.")
-with topbar[1]:
-    st.markdown(
-        '<span class="af-badge">AlphaForge AI · Agent Bedrock</span>',
-        unsafe_allow_html=True,
-    )
-with topbar[2]:
-    selected_persona_name = st.selectbox(
-        "Profil", list(persona_by_name), label_visibility="collapsed"
-    )
-persona = persona_by_name[selected_persona_name]
-portfolio = portfolios_by_id[persona["id"]]
+persona_by_id = {persona["id"]: persona for persona in personas}
+st.caption("Simulation fictive · aucune transaction réelle.")
+st.title("Étape 1 — Choisir une situation fictive")
+st.write(
+    "Explorez un portefeuille de démonstration et voyez ce que change "
+    "une hypothèse d’investissement."
+)
+st.markdown("#### Décrire une demande avec vos mots (facultatif)")
+natural_request = st.text_input(
+    "Par exemple : Pour Amira, tester 15 % de NVIDIA.",
+    max_chars=500,
+    key="natural_request_text",
+)
+if st.button("Comprendre la demande", key="interpret_scenario_request"):
+    interpreted = interpret_scenario_request(natural_request, root=ROOT)
+    if interpreted.get("status") == "ready":
+        requested = interpreted["request"]
+        st.session_state["selected_persona_id"] = requested["persona_id"]
+        st.session_state["selected_symbol"] = requested["symbol"]
+        st.session_state["target_weight"] = requested["target_weight_pct"]
+        st.session_state["pending_intent"] = requested
+    else:
+        st.session_state["pending_intent"] = None
+        message = interpreted.get("message") or interpreted.get(
+            "error", {}
+        ).get("message", "La demande n’a pas pu être comprise.")
+        if interpreted.get("status") == "error":
+            st.error(message)
+        else:
+            st.info(message)
+
+selected_persona_id = st.session_state.get(
+    "selected_persona_id", personas[0]["id"]
+)
+if selected_persona_id not in persona_by_id:
+    selected_persona_id = personas[0]["id"]
+    st.session_state["selected_persona_id"] = selected_persona_id
+persona = persona_by_id[selected_persona_id]
 scenario = scenarios_by_id[persona["id"]]
+st.session_state.setdefault("selected_symbol", scenario["symbol"])
+st.session_state.setdefault(
+    "target_weight", float(scenario["target_weight_pct"])
+)
+if st.session_state["selected_symbol"] in {
+    position["symbol"]
+    for position in portfolios_by_id[persona["id"]]["positions"]
+} or st.session_state["selected_symbol"] not in assets:
+    st.session_state["selected_symbol"] = scenario["symbol"]
+
+profile_columns = st.columns(len(personas))
+for column, profile in zip(profile_columns, personas):
+    profile_horizon_end = profile["horizon_years_max"]
+    profile_horizon = (
+        f"{profile['horizon_years_min']}–{profile_horizon_end} ans"
+        if profile_horizon_end is not None
+        else f"{profile['horizon_years_min']} ans et plus"
+    )
+    with column.container(border=True):
+        st.subheader(profile["name"])
+        st.caption(
+            readable_label(profile.get("risk_level", ""), RISK_LEVEL_LABELS)
+        )
+        st.write(profile["objective"])
+        st.write(f"**Horizon :** {profile_horizon}")
+        st.write(
+            f"**Préférences :** {format_preferences(profile.get('preferences', []))}"
+        )
+        is_selected = profile["id"] == persona["id"]
+        st.button(
+            "Profil choisi" if is_selected else f"Choisir {profile['name']}",
+            key=f"choose_persona_{profile['id']}",
+            type="primary" if is_selected else "secondary",
+            on_click=select_persona,
+            args=(profile["id"], scenarios_by_id),
+        )
+
+portfolio = portfolios_by_id[persona["id"]]
 starting_weights = asset_weights(portfolio)
 
 horizon_end = persona["horizon_years_max"]
@@ -503,74 +684,69 @@ with st.sidebar:
             st.caption(portfolio["esg_evidence_limitations"])
 
 available_symbols = sorted(set(assets) - set(starting_weights))
-if not ENGINE_AVAILABLE:
-    st.error("Le moteur local est indisponible; les scénarios personnalisés ne peuvent pas être calculés.")
-    st.stop()
 if not available_symbols:
     st.error("Aucun actif disponible à ajouter au portefeuille.")
     st.stop()
 
 default_symbol = scenario["symbol"]
-default_index = available_symbols.index(
-    default_symbol) if default_symbol in available_symbols else 0
-
-title_symbol = st.session_state.get("selected_symbol", default_symbol)
-if title_symbol not in available_symbols:
-    title_symbol = default_symbol
-st.title(f"Et si vous ajoutiez {title_symbol} ?")
-st.write("Mesurez l’impact sur votre portefeuille et comprenez les compromis.")
+if st.session_state["selected_symbol"] not in available_symbols:
+    st.session_state["selected_symbol"] = default_symbol
 
 st.html('<div id="scenario-form"></div>')
-with st.form("custom_scenario_form"):
-    col_profile, col_symbol, col_weight, col_action = st.columns(
-        [0.85, 1.15, 1.45, 1.3]
+st.caption("Étape 2")
+st.subheader("Décrire un changement")
+scenario_columns = st.columns([1.4, 1])
+with scenario_columns[0]:
+    selected_symbol = st.selectbox(
+        "Actif à ajouter",
+        available_symbols,
+        key="selected_symbol",
+        format_func=lambda symbol: (
+            f"{assets.get(symbol, {}).get('name', symbol)} — {symbol}"
+        ),
     )
-    with col_profile:
-        st.markdown("**Profil**")
-        st.markdown(persona["name"])
-    with col_symbol:
-        selected_symbol = st.selectbox(
-            "Actif",
-            available_symbols,
-            index=default_index,
-            key="selected_symbol",
-            format_func=lambda symbol: (
-                f"{symbol} · {assets.get(symbol, {}).get('name', symbol)}"
-            ),
-        )
-    with col_weight:
-        target_weight = st.slider(
-            "Poids cible (%)", min_value=1.0, max_value=50.0,
-            value=float(scenario["target_weight_pct"]), step=0.5,
-            key="target_weight",
-        )
-    with col_action:
-        st.markdown("**Analyse**")
-        submitted = st.form_submit_button(
-            "Analyser le scénario", type="primary"
-        )
-st.caption(
-    "Financement : réduction proportionnelle des positions existantes."
+with scenario_columns[1]:
+    target_weight = st.slider(
+        "Part du portefeuille (%)",
+        min_value=1.0,
+        max_value=50.0,
+        step=0.5,
+        key="target_weight",
+    )
+
+selected_asset = assets[selected_symbol]
+selected_asset_name = selected_asset.get("name", selected_symbol)
+selected_asset_type = readable_label(
+    selected_asset.get("asset_class", ""), ASSET_CLASS_LABELS
 )
+st.caption(selected_asset_type)
+st.info(
+    f"Dans cette simulation, {persona['name']} consacre "
+    f"{format_weight(target_weight)} de son portefeuille à "
+    f"{selected_asset_name} ({selected_symbol}). Les autres positions "
+    "diminuent proportionnellement."
+)
+pending_intent = st.session_state.get("pending_intent")
+if pending_intent == request_key(
+    persona["id"], selected_symbol, target_weight
+):
+    st.success(
+        "Paramètres compris : "
+        f"{persona['name']} · {selected_asset_name} ({selected_symbol}) · "
+        f"{format_weight(target_weight)}. Vérifiez-les puis lancez l’analyse."
+    )
+submitted = st.button("Analyser le scénario", type="primary")
 st.html('<div id="results"></div>')
 
 if submitted:
     analyzed_request = request_key(persona["id"], selected_symbol, target_weight)
-    try:
-        with st.spinner(
-            "Nous comparons les portefeuilles et préparons votre explication…"
-        ):
-            response = analyze_request(
-                persona["id"], selected_symbol, target_weight
-            )
-    except Exception:
-        response = {
-            "status": "error",
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "message": "Le service d’analyse a rencontré une erreur inattendue.",
-            },
-        }
+    st.session_state["pending_intent"] = None
+    with st.spinner(
+        "Nous comparons les portefeuilles et préparons votre explication…"
+    ):
+        response = analyze_request(
+            persona["id"], selected_symbol, target_weight
+        )
     st.session_state["analyzed_request"] = analyzed_request
     st.session_state["analysis_response"] = response
 
@@ -585,52 +761,48 @@ if stored_request and response:
     stored_asset_name = assets.get(stored_request["symbol"], {}).get(
         "name", "cet actif"
     )
-    st.markdown(
-        "**Résultat conservé :** "
-        f"{stored_name} · {stored_asset_name} · "
-        f"{format_weight(stored_request['target_weight_pct'])}"
-    )
     if current_request != stored_request:
         st.warning(
-            "Le formulaire vise maintenant un autre scénario. Les résultats "
-            "ci-dessous correspondent encore à la demande conservée; cliquez "
-            "sur « Analyser le changement » pour lancer une nouvelle analyse."
+            f"Le rapport précédent concernait {stored_name}, "
+            f"{stored_asset_name} à "
+            f"{format_weight(stored_request['target_weight_pct'])}. "
+            "Il est masqué, car le scénario sélectionné a changé. "
+            "Lancez l’analyse pour obtenir le nouveau résultat."
         )
-
-    status = response.get("status")
-    technical_mode = st.toggle(
-        "Mode technique",
-        value=False,
-        help="Affiche les métriques brutes, les contrôles et les preuves détaillés.",
-    )
-    if status == "error":
-        st.error(
-            "Nous n’avons pas pu produire le rapport. Vérifiez les choix du "
-            "formulaire, puis relancez l’analyse."
-        )
-        if technical_mode:
-            render_technical_details(response, None, [], stored_request)
     else:
-        analysis = response.get("analysis")
-        checks = response.get("checks") or []
+        st.caption("Étape 3")
+        st.subheader("Comprendre et comparer")
+        status = response.get("status")
+        technical_mode = st.toggle(
+            "Mode technique",
+            value=False,
+            help="Affiche les métriques brutes, les contrôles et les preuves détaillés.",
+        )
         if status == "success":
-            st.success("Votre rapport est prêt.")
+            st.success("Simulation calculée et explication Bedrock validée.")
         elif status == "partial":
             st.warning(
-                "Les calculs sont disponibles; l’explication automatique "
-                "n’a pas pu être produite."
+                "Les calculs sont disponibles, mais Bedrock n’a pas fourni "
+                "d’explication. Le résumé ci-dessous s’appuie uniquement sur "
+                "les résultats calculés."
             )
-        if analysis:
+        elif status == "error":
+            st.error(
+                "Nous n’avons pas pu calculer ce scénario. Vérifiez les choix "
+                "et les données disponibles, puis réessayez."
+            )
+        else:
+            st.error("Le service a retourné un état de simulation inconnu.")
+
+        analysis = response.get("analysis")
+        checks = response.get("checks") or []
+        if status == "error":
+            if technical_mode:
+                render_technical_details(response, None, [], stored_request)
+        elif analysis:
             explanation = response.get("explanation")
             stored_asset = assets.get(stored_request["symbol"], {})
             stored_asset_name = stored_asset.get("name", "cet actif")
-            report_persona = stored_persona or persona
-            report_horizon_end = report_persona.get("horizon_years_max")
-            report_horizon = (
-                f"{report_persona['horizon_years_min']}–{report_horizon_end} ans"
-                if report_horizon_end is not None
-                else f"{report_persona['horizon_years_min']} ans et plus"
-            )
             render_simulation(analysis, stored_asset)
             report_left, report_right = st.columns([1.8, 1.0], gap="medium")
             with report_left:
@@ -653,17 +825,6 @@ if stored_request and response:
                     )
                     render_remaining(stored_persona or persona, checks)
                 with st.container(border=True):
-                    st.subheader("Analyse traçable")
-                    st.write(
-                        f"Profil consulté : {stored_name} · "
-                        f"{report_persona['objective']} · {report_horizon}."
-                    )
-                    st.write(
-                        f"Simulation calculée : ajout de {stored_asset_name} "
-                        f"à {format_weight(stored_request['target_weight_pct'])}."
-                    )
-                    st.write(f"Contrôles exécutés : {len(checks)}.")
-                with st.container(border=True):
                     st.html('<div id="sources-method"></div>')
                     render_methodology()
                     render_sources(analysis, checks)
@@ -671,6 +832,185 @@ if stored_request and response:
                 render_technical_details(
                     response, analysis, checks, stored_request
                 )
+            previous_follow_up = st.session_state.get("follow_up_result")
+            with st.expander(
+                "Poser une question sur cette simulation",
+                expanded=(
+                    previous_follow_up is not None
+                    and previous_follow_up.get("request") == stored_request
+                ),
+            ):
+                st.caption(
+                    "Exemples : Pourquoi le risque change-t-il ? "
+                    "Est-ce que cela diversifie vraiment le portefeuille ? "
+                    "Quelles preuves soutiennent l’analyse ESG ?"
+                )
+                follow_up_question = st.text_input(
+                    "Votre question",
+                    max_chars=500,
+                    key="follow_up_question",
+                )
+                if st.button("Répondre à ma question", key="answer_follow_up"):
+                    if re.search(
+                        r"\d+(?:[.,]\d+)?\s*(?:%|pour\s*cent|pourcent)",
+                        follow_up_question,
+                        re.IGNORECASE,
+                    ):
+                        follow_up_result = interpret_scenario_request(
+                            follow_up_question,
+                            root=ROOT,
+                            current_request=stored_request,
+                        )
+                        follow_up_kind = "scenario"
+                    else:
+                        follow_up_result = answer_follow_up(
+                            follow_up_question,
+                            response,
+                            stored_request,
+                            root=ROOT,
+                        )
+                        follow_up_kind = "answer"
+                    st.session_state["follow_up_result"] = {
+                        "request": stored_request,
+                        "question": follow_up_question,
+                        "kind": follow_up_kind,
+                        "result": follow_up_result,
+                    }
+
+                follow_up_state = st.session_state.get("follow_up_result")
+                if (
+                    follow_up_state
+                    and follow_up_state.get("request") == stored_request
+                    and follow_up_state.get("question") == follow_up_question
+                ):
+                    follow_up_result = follow_up_state["result"]
+                    if follow_up_state["kind"] == "scenario":
+                        if follow_up_result.get("status") == "ready":
+                            requested = follow_up_result["request"]
+                            requested_persona = persona_by_id[
+                                requested["persona_id"]
+                            ]
+                            requested_asset = assets[requested["symbol"]]
+                            st.info(
+                                "Nouvelle variante comprise : "
+                                f"{requested_persona['name']} · "
+                                f"{requested_asset['name']} — "
+                                f"{requested['symbol']} · "
+                                f"{format_weight(requested['target_weight_pct'])}. "
+                                "Utilisez-la pour mettre à jour le scénario, puis "
+                                "lancez le calcul."
+                            )
+                            st.button(
+                                "Utiliser cette variante",
+                                key="apply_follow_up_variant",
+                                on_click=apply_intent_request,
+                                args=(requested,),
+                            )
+                        else:
+                            message = follow_up_result.get("message") or (
+                                follow_up_result.get("error", {}).get("message")
+                            )
+                            st.info(
+                                message
+                                or "La nouvelle variante doit être précisée."
+                            )
+                    elif follow_up_result.get("status") == "success":
+                        st.markdown(follow_up_result["answer"])
+                        st.caption(
+                            "Réponse fondée sur les données et contrôles "
+                            "de cette simulation."
+                        )
+                        if technical_mode:
+                            st.json(
+                                {
+                                    "evidence_refs": follow_up_result[
+                                        "evidence_refs"
+                                    ],
+                                    "origin": follow_up_result["origin"],
+                                }
+                            )
+                    else:
+                        st.info(
+                            follow_up_result.get("message")
+                            or "La réponse de suivi n’est pas disponible."
+                        )
+        elif status in {"success", "partial"}:
+            st.error("Les calculs ne sont pas présents dans cette réponse.")
+            if technical_mode:
+                render_technical_details(response, None, checks, stored_request)
+
+with st.expander(
+    "Comparer deux variantes",
+    expanded=bool(st.session_state.get("comparison_request")),
+):
+    st.write(
+        "Comparez deux proportions du même actif, à partir du même portefeuille "
+        "fictif et sur une période historique commune."
+    )
+    st.session_state.setdefault("comparison_weight_a", 5.0)
+    st.session_state.setdefault("comparison_weight_b", 20.0)
+    comparison_columns = st.columns(2)
+    with comparison_columns[0]:
+        comparison_weight_a = st.slider(
+            "Variante A — part du portefeuille (%)",
+            min_value=1.0,
+            max_value=50.0,
+            step=0.5,
+            key="comparison_weight_a",
+        )
+    with comparison_columns[1]:
+        comparison_weight_b = st.slider(
+            "Variante B — part du portefeuille (%)",
+            min_value=1.0,
+            max_value=50.0,
+            step=0.5,
+            key="comparison_weight_b",
+        )
+
+    comparison_request = {
+        "persona_id": persona["id"],
+        "symbol": selected_symbol,
+        "weight_a_pct": float(comparison_weight_a),
+        "weight_b_pct": float(comparison_weight_b),
+    }
+    if st.button("Comparer les variantes", key="compare_variants"):
+        with st.spinner("Nous comparons les deux variantes…"):
+            comparison_response = analyze_comparison(
+                persona["id"],
+                selected_symbol,
+                comparison_weight_a,
+                comparison_weight_b,
+            )
+        st.session_state["comparison_request"] = comparison_request
+        st.session_state["comparison_response"] = comparison_response
+
+    stored_comparison_request = st.session_state.get("comparison_request")
+    stored_comparison = st.session_state.get("comparison_response")
+    if stored_comparison_request and stored_comparison:
+        if comparison_request != stored_comparison_request:
+            st.info(
+                "Les paramètres de comparaison ont changé. Relancez la "
+                "comparaison pour afficher le résultat correspondant."
+            )
+        elif stored_comparison.get("status") == "error":
+            st.error(
+                "Cette comparaison n’a pas pu être réalisée sur une période "
+                "commune."
+            )
+            if st.toggle(
+                "Mode technique — comparaison",
+                value=False,
+                key="comparison_technical_mode",
+            ):
+                st.json(stored_comparison)
+        else:
+            render_variant_comparison(stored_comparison, assets, persona)
+            if st.toggle(
+                "Mode technique — comparaison",
+                value=False,
+                key="comparison_technical_mode",
+            ):
+                st.json(stored_comparison)
 
 st.caption(
     "Les résultats historiques ne préjugent pas des résultats futurs. "

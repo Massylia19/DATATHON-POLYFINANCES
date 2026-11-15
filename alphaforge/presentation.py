@@ -60,6 +60,25 @@ ASSET_CLASS_LABELS = {
     "cash": "Liquidités",
 }
 
+RISK_LEVEL_LABELS = {
+    "high": "Risque élevé",
+    "moderate": "Risque modéré",
+    "low_to_moderate": "Risque faible à modéré",
+}
+
+PREFERENCE_LABELS = {
+    "AI": "intelligence artificielle",
+    "IA": "intelligence artificielle",
+    "technologies": "technologies émergentes",
+    "crypto": "cryptoactifs",
+    "diversification": "diversification",
+    "ESG": "critères environnementaux, sociaux et de gouvernance",
+    "stabilité": "stabilité",
+    "peu de spéculation": "peu de placements spéculatifs",
+    "entreprises établies": "entreprises établies",
+    "peu de crypto": "peu de cryptoactifs",
+}
+
 METRIC_PRESENTATION = {
     "total_return": {
         "title": "Gain sur la période",
@@ -213,6 +232,12 @@ def join_french_list(items: list[str]) -> str:
     if len(items) == 2:
         return f"{items[0]} et {items[1]}"
     return f"{', '.join(items[:-1])} et {items[-1]}"
+
+
+def format_preferences(items: list[str]) -> str:
+    return join_french_list(
+        [PREFERENCE_LABELS.get(item, item) for item in items]
+    )
 
 
 def has_unsafe_main_narrative(value: Any) -> bool:

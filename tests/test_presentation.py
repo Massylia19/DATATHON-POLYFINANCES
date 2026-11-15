@@ -7,6 +7,7 @@ from alphaforge.presentation import (
     build_main_summary,
     describe_metric_change,
     format_date_fr,
+    format_preferences,
     format_points,
     format_rate,
     format_weight,
@@ -62,6 +63,13 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(
             readable_label("new_unknown_key", MISSING_INFORMATION_LABELS),
             "Autre information à vérifier",
+        )
+
+    def test_profile_card_labels_are_accessible_french(self):
+        self.assertEqual(
+            format_preferences(["ESG", "stabilité", "peu de spéculation"]),
+            "critères environnementaux, sociaux et de gouvernance, stabilité "
+            "et peu de placements spéculatifs",
         )
 
     def test_missing_information_is_personalized_grouped_and_deduplicated(self):
