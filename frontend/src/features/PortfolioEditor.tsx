@@ -355,7 +355,7 @@ export function PortfolioEditor({ data, onResult }: PortfolioEditorProps) {
                   <>
                     <AlertCircle style={{ width: "20px", height: "20px", color: "var(--warning)" }} />
                     <span style={{ fontWeight: 700, color: "var(--warning)" }}>
-                      Écart: {weightDelta > 0 ? "+" : ""}{(totalWeight - 100).toFixed(1)}%
+                      Écart: {(totalWeight - 100) > 0 ? "+" : ""}{(totalWeight - 100).toFixed(1)}%
                     </span>
                   </>
                 )}
