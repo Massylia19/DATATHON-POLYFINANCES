@@ -223,7 +223,7 @@ Les contrôles sont exécutés par `alphaforge/profile_checks.py`. Ils conserven
 
 `agent.service.analyze_request` orchestre deux outils locaux déterministes : `simulate_portfolio_change`, puis `check_profile`. Bedrock Converse produit ensuite une explication structurée, validée par rapport aux preuves et métriques du moteur. Une demande en langage naturel peut être interprétée séparément; le code vérifie le profil, l'actif et le pourcentage explicite avant d'afficher les paramètres à confirmer. Les questions de suivi utilisent le scénario et les preuves actuellement affichés.
 
-Sans modèle configuré ou si Bedrock est indisponible, le service conserve les calculs et les contrôles avec le statut `partial`. Il ne présente pas un texte de remplacement comme une réponse du modèle. La comparaison A/B exécute deux analyses indépendantes du même actif et bloque l'affichage si leurs dates ne correspondent pas.
+Par défaut, le service utilise le profil d'inférence `us.anthropic.claude-opus-5-5`; `BEDROCK_MODEL_ID` permet de le remplacer. Si Bedrock ou l'authentification AWS est indisponible, le service conserve les calculs et les contrôles avec le statut `partial`, et indique la cause détectée lorsqu'elle est connue. Il ne présente pas un texte de remplacement comme une réponse du modèle. La comparaison A/B exécute deux analyses indépendantes du même actif et bloque l'affichage si leurs dates ne correspondent pas.
 
 Diagnostic de l'accès AWS : voir [docs/aws_bedrock_diagnostic.md](docs/aws_bedrock_diagnostic.md).
 
@@ -233,7 +233,7 @@ Diagnostic de l'accès AWS : voir [docs/aws_bedrock_diagnostic.md](docs/aws_bedr
 
 L'interface Streamlit (`app.py`, styles dans `styles/style.css`) guide l'utilisateur à travers trois étapes : choisir un personnage fictif, décrire un ajout d'actif, puis comprendre les résultats calculés. Les cartes des profils reprennent uniquement les objectifs, horizons et préférences documentés. Les autres paramètres sont modifiables depuis l'interface.
 
-Les profils et portefeuilles fournis dans le dépôt sont des données de démonstration; les prix historiques proviennent des fichiers de marché du projet. L'application n'exécute aucune transaction. À la demande explicite de l'utilisateur, elle appelle le service AlphaForge; celui-ci utilise Bedrock Converse si `BEDROCK_MODEL_ID` et des identifiants AWS valides sont configurés. Les réponses simulées sont réservées aux tests; elles ne sont pas utilisées par l'application.
+Les profils et portefeuilles fournis dans le dépôt sont des données de démonstration; les prix historiques proviennent des fichiers de marché du projet. L'application n'exécute aucune transaction. À la demande explicite de l'utilisateur, elle appelle le service AlphaForge; celui-ci utilise Bedrock Converse avec le profil par défaut documenté ou l'identifiant défini par `BEDROCK_MODEL_ID`. Des identifiants AWS valides et actifs restent nécessaires. Les réponses simulées sont réservées aux tests; elles ne sont pas utilisées par l'application.
 
 ### Lancement
 
@@ -251,8 +251,8 @@ python -m streamlit run app.py
 
 Sous Windows, remplacer `python` par `py -3`.
 
-Le terminal doit contenir les identifiants temporaires AWS Workshop Studio et
-la configuration non secrète suivante :
+Le terminal doit contenir les identifiants temporaires AWS Workshop Studio.
+Le profil d'inférence est déjà configuré par défaut. Pour en choisir un autre :
 
 ```powershell
 $env:BEDROCK_MODEL_ID = "us.anthropic.claude-opus-5-5"
@@ -260,7 +260,8 @@ python -m streamlit run app.py
 ```
 
 La région utilisée par le service est `us-east-1`. L'interface ne demande et
-n'enregistre aucune clé AWS.
+n'enregistre aucune clé AWS. Si l'accès AWS n'est pas authentifié, l'application
+indique que les identifiants doivent être renouvelés ou configurés.
 
 Streamlit affiche l'adresse de l'application dans le terminal, par défaut <http://localhost:8501>, et ouvre normalement le navigateur automatiquement. Pour arrêter l'application, appuyer sur `Ctrl+C` dans le terminal. Après une modification de `app.py` ou de `styles/style.css`, il suffit de recharger la page; une modification de `.streamlit/config.toml` demande de relancer l'application.
 
@@ -314,10 +315,11 @@ Les thèmes Clair et Sombre sont définis dans `app.py` (dictionnaire `THEMES`, 
 
 #### Mode de secours sans AWS
 
-Depuis un terminal PowerShell, sans identifiants AWS ni `BEDROCK_MODEL_ID` :
+Depuis un terminal PowerShell, sans identifiants AWS, désactivez explicitement
+Bedrock pour ce lancement :
 
 ```powershell
-Remove-Item Env:BEDROCK_MODEL_ID -ErrorAction SilentlyContinue
+$env:BEDROCK_MODEL_ID = ""
 python -m streamlit run app.py
 ```
 

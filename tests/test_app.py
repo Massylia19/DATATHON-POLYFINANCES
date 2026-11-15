@@ -351,6 +351,19 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertFalse(any("rapport est prêt" in item.value for item in partial.success))
 
         with patch("agent.service.analyze_request") as service:
+            service.return_value = response_for(status="partial")
+            service.return_value["warnings"] = [
+                "Identifiants AWS absents ou incomplets."
+            ]
+            partial = self.run_scenario("Amira", "NVDA", 10)
+            self.assertTrue(
+                any(
+                    "terminal authentifié" in item.value
+                    for item in partial.caption
+                )
+            )
+
+        with patch("agent.service.analyze_request") as service:
             service.return_value = {
                 "status": "error",
                 "error": {"code": "UNKNOWN_SYMBOL", "message": "Actif inconnu."},

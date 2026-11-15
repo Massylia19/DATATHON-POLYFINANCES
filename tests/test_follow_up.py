@@ -3,7 +3,9 @@ import os
 import unittest
 from unittest.mock import patch
 
-from agent.service import answer_follow_up
+from botocore.exceptions import NoCredentialsError
+
+from agent.service import DEFAULT_MODEL_ID, answer_follow_up
 from alphaforge.engine import PROJECT_ROOT, run_analysis
 from alphaforge.profile_checks import validate_profile
 
@@ -159,6 +161,58 @@ class FollowUpTests(unittest.TestCase):
             )
         self.assertEqual(result["status"], "unavailable")
         self.assertEqual(client.calls, [])
+
+    def test_default_model_is_used_when_no_override_is_configured(self):
+        response = current_result()
+        request = {
+            "persona_id": "amira",
+            "symbol": "NVDA",
+            "target_weight_pct": 10.0,
+        }
+        client = FakeClient(
+            {
+                "answer": (
+                    "Les fluctuations observées sont historiques et ne prédisent "
+                    "pas une perte future."
+                ),
+                "evidence_refs": ["analysis.after.metrics.annualized_volatility"],
+            }
+        )
+        with patch.dict(os.environ, {}, clear=True):
+            result = answer_follow_up(
+                "Pourquoi le risque change-t-il ?",
+                response,
+                request,
+                client=client,
+                root=PROJECT_ROOT,
+            )
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(client.calls[0]["modelId"], DEFAULT_MODEL_ID)
+
+    def test_missing_aws_credentials_are_reported_actionably(self):
+        response = current_result()
+        request = {
+            "persona_id": "amira",
+            "symbol": "NVDA",
+            "target_weight_pct": 10.0,
+        }
+
+        class MissingCredentialsClient:
+            def converse(self, **kwargs):
+                raise NoCredentialsError()
+
+        with patch.dict(os.environ, {}, clear=True):
+            result = answer_follow_up(
+                "Pourquoi le risque change-t-il ?",
+                response,
+                request,
+                client=MissingCredentialsClient(),
+                root=PROJECT_ROOT,
+            )
+
+        self.assertEqual(result["status"], "unavailable")
+        self.assertIn("Identifiants AWS absents ou incomplets", result["message"])
 
 
 if __name__ == "__main__":

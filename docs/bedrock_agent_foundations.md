@@ -2,8 +2,10 @@
 
 Le module `agent` relie une demande validée au moteur local, aux contrôles de
 profil et à Bedrock Converse. Il ne contient aucune clé AWS. La région est
-`us-east-1` et le modèle est lu dans `BEDROCK_MODEL_ID`. Aucun paramètre
-`temperature` n'est envoyé.
+`us-east-1`; le profil d'inférence par défaut est
+`us.anthropic.claude-opus-5-5` et peut être remplacé par `BEDROCK_MODEL_ID`.
+Une variable `BEDROCK_MODEL_ID` vide désactive Bedrock pour le mode hors ligne.
+Aucun paramètre `temperature` n'est envoyé.
 
 ## Créer un contexte isolé et appeler les outils
 

@@ -31,6 +31,7 @@ from scripts.aws_support import AWS_REGION, explain_aws_error
 
 
 MODEL_ID_ENV = "BEDROCK_MODEL_ID"
+DEFAULT_MODEL_ID = "us.anthropic.claude-opus-5-5"
 MAX_CONVERSE_CALLS = 8
 MAX_TOOL_EXECUTIONS = 12
 MAX_OUTPUT_TOKENS = 2048
@@ -62,6 +63,15 @@ _EXPLICIT_WEIGHT = re.compile(
     r"(?<!\w)(\d+(?:[.,]\d+)?)\s*(%|pour\s+cent|pourcent)(?!\w)",
     re.IGNORECASE,
 )
+
+
+def _selected_model_id(model_id: str | None) -> str:
+    if model_id is not None:
+        return model_id.strip()
+    configured_model = os.environ.get(MODEL_ID_ENV)
+    if configured_model is None:
+        return DEFAULT_MODEL_ID
+    return configured_model.strip()
 
 
 class ExplanationValidationError(ValueError):
@@ -674,10 +684,10 @@ def analyze_request(
         return _error_response("INTERNAL_ERROR", str(exc))
 
     warnings: list[str] = []
-    selected_model = model_id or os.environ.get(MODEL_ID_ENV)
+    selected_model = _selected_model_id(model_id)
     if not selected_model:
         warnings.append(
-            "BEDROCK_MODEL_ID est absent; aucune explication AWS n'a été produite."
+            "Bedrock est désactivé explicitement; aucune explication n'a été produite."
         )
         blocking = _ensure_local_results(context, warnings)
         return blocking or _partial_response(context, warnings)
@@ -1004,23 +1014,25 @@ def interpret_scenario_request(
     ):
         expected_symbol = str(current_request["symbol"]).upper()
 
-    selected_model = model_id or os.environ.get(MODEL_ID_ENV)
+    selected_model = _selected_model_id(model_id)
     if not selected_model:
         return {
             "status": "unavailable",
             "message": (
-                "La compréhension automatique est indisponible. "
-                "Vous pouvez choisir les paramètres manuellement."
+                "Bedrock est désactivé pour ce lancement. "
+                "Réactivez l’accès à l’agent ou choisissez les paramètres "
+                "manuellement."
             ),
         }
     if client is None:
         try:
             client = _bedrock_client()
-        except Exception:
+        except Exception as exc:
             return {
                 "status": "unavailable",
                 "message": (
-                    "La compréhension automatique est temporairement indisponible."
+                    "La compréhension automatique est indisponible : "
+                    f"{explain_aws_error(exc, invalid_model_is_possible=True)}"
                 ),
             }
 
@@ -1050,16 +1062,26 @@ def interpret_scenario_request(
             messages=[{"role": "user", "content": [{"text": prompt}]}],
             inferenceConfig={"maxTokens": 256},
         )
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "message": (
+                "La compréhension automatique est indisponible : "
+                f"{explain_aws_error(exc, invalid_model_is_possible=True)} "
+                "Vous pouvez choisir les paramètres manuellement."
+            ),
+        }
+    try:
         assistant = _assistant_message(response)
         if response.get("stopReason") != "end_turn":
             raise ValueError("La demande d’extraction n’est pas terminée.")
         extracted = _parse_json_text(_text_from_message(assistant))
-    except Exception:
+    except (KeyError, TypeError, ValueError):
         return {
             "status": "unavailable",
             "message": (
-                "La compréhension automatique n’a pas pu confirmer ces paramètres. "
-                "Choisissez-les manuellement."
+                "Bedrock a répondu, mais n’a pas confirmé les paramètres. "
+                "Vérifiez-les et choisissez-les manuellement."
             ),
         }
 
@@ -1164,19 +1186,25 @@ def answer_follow_up(
     context.analysis = deepcopy(analysis)
     context.checks = deepcopy(checks)
 
-    selected_model = model_id or os.environ.get(MODEL_ID_ENV)
+    selected_model = _selected_model_id(model_id)
     if not selected_model:
         return {
             "status": "unavailable",
-            "message": "Les réponses de suivi sont indisponibles sans Bedrock.",
+            "message": (
+                "Bedrock est désactivé pour ce lancement; les réponses de suivi "
+                "sont indisponibles."
+            ),
         }
     if client is None:
         try:
             client = _bedrock_client()
-        except Exception:
+        except Exception as exc:
             return {
                 "status": "unavailable",
-                "message": "Le service de réponse est temporairement indisponible.",
+                "message": (
+                    "Le service de réponse est indisponible : "
+                    f"{explain_aws_error(exc, invalid_model_is_possible=True)}"
+                ),
             }
 
     evidence = build_evidence_bundle(context)
@@ -1209,14 +1237,23 @@ def answer_follow_up(
             messages=[{"role": "user", "content": [{"text": prompt}]}],
             inferenceConfig={"maxTokens": 512},
         )
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "message": (
+                "La réponse de suivi est indisponible : "
+                f"{explain_aws_error(exc, invalid_model_is_possible=True)}"
+            ),
+        }
+    try:
         assistant = _assistant_message(response)
         if response.get("stopReason") != "end_turn":
             raise ValueError("La réponse de suivi n’est pas terminée.")
         value = _parse_json_text(_text_from_message(assistant))
-    except Exception:
+    except (KeyError, TypeError, ValueError):
         return {
             "status": "unavailable",
-            "message": "La réponse de suivi n’a pas pu être produite.",
+            "message": "Bedrock n’a pas produit une réponse exploitable.",
         }
 
     if not isinstance(value, dict) or set(value) != {"answer", "evidence_refs"}:

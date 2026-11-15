@@ -3,7 +3,9 @@ import os
 import unittest
 from unittest.mock import patch
 
-from agent.service import interpret_scenario_request
+from botocore.exceptions import NoCredentialsError
+
+from agent.service import DEFAULT_MODEL_ID, interpret_scenario_request
 from alphaforge.engine import PROJECT_ROOT
 
 
@@ -187,6 +189,39 @@ class ScenarioIntentTests(unittest.TestCase):
             )
         self.assertEqual(result["status"], "unavailable")
         self.assertEqual(client.calls, [])
+
+    def test_default_model_is_used_when_no_override_is_configured(self):
+        client = FakeClient(
+            {
+                "persona_id": "amira",
+                "symbol": "NVDA",
+                "target_weight_pct": 15,
+            }
+        )
+        with patch.dict(os.environ, {}, clear=True):
+            result = interpret_scenario_request(
+                "Pour Amira, tester 15 % de NVIDIA",
+                client=client,
+                root=PROJECT_ROOT,
+            )
+
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(client.calls[0]["modelId"], DEFAULT_MODEL_ID)
+
+    def test_missing_aws_credentials_are_reported_actionably(self):
+        class MissingCredentialsClient:
+            def converse(self, **kwargs):
+                raise NoCredentialsError()
+
+        with patch.dict(os.environ, {}, clear=True):
+            result = interpret_scenario_request(
+                "Pour Amira, tester 15 % de NVIDIA",
+                client=MissingCredentialsClient(),
+                root=PROJECT_ROOT,
+            )
+
+        self.assertEqual(result["status"], "unavailable")
+        self.assertIn("Identifiants AWS absents ou incomplets", result["message"])
 
 
 if __name__ == "__main__":

@@ -108,6 +108,37 @@ def apply_intent_request(request: dict) -> None:
     st.session_state["pending_intent"] = request
 
 
+def bedrock_availability_hint(response: dict) -> str | None:
+    warning_text = " ".join(str(item) for item in response.get("warnings", []))
+    if "Identifiants AWS absents ou incomplets" in warning_text:
+        return (
+            "La session n’a pas d’identifiants AWS actifs. Lancez l’application "
+            "depuis le terminal authentifié, puis relancez l’analyse."
+        )
+    if "Les identifiants AWS temporaires ont expiré" in warning_text:
+        return "Les identifiants AWS ont expiré. Renouvelez-les puis relancez l’analyse."
+    if "Accès refusé par IAM" in warning_text:
+        return (
+            "Le compte AWS n’a pas accès à ce modèle Bedrock. Vérifiez les "
+            "autorisations du compte."
+        )
+    if "Modèle ou profil introuvable" in warning_text:
+        return "Le modèle configuré est introuvable dans la région AWS utilisée."
+    if "Point de terminaison AWS indisponible" in warning_text:
+        return "Bedrock est inaccessible depuis le réseau actuel."
+    if "désactivé explicitement" in warning_text:
+        return (
+            "L’accès à Bedrock est désactivé pour ce lancement. Réactivez-le "
+            "pour obtenir une explication de l’agent."
+        )
+    if "Validation de l'explication" in warning_text:
+        return (
+            "La réponse reçue n’a pas passé les contrôles de fiabilité. "
+            "Les calculs restent disponibles; vous pouvez relancer l’analyse."
+        )
+    return None
+
+
 def render_evidence_references(
     references: list[str], request: dict, response: dict, *, inside_expander: bool = False
 ) -> None:
@@ -782,10 +813,13 @@ if stored_request and response:
             st.success("Simulation calculée et explication Bedrock validée.")
         elif status == "partial":
             st.warning(
-                "Les calculs sont disponibles, mais Bedrock n’a pas fourni "
-                "d’explication. Le résumé ci-dessous s’appuie uniquement sur "
-                "les résultats calculés."
+                "Les calculs sont disponibles, mais l’agent n’a pas fourni "
+                "d’explication validée. Le résumé ci-dessous s’appuie sur les "
+                "résultats calculés."
             )
+            availability_hint = bedrock_availability_hint(response)
+            if availability_hint:
+                st.caption(availability_hint)
         elif status == "error":
             st.error(
                 "Nous n’avons pas pu calculer ce scénario. Vérifiez les choix "
