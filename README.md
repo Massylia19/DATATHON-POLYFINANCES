@@ -4,7 +4,7 @@
 
 AlphaForge AI est une application pédagogique de simulation. Elle compare un portefeuille fictif **avant** et **après** l'ajout d'un actif, sur des données historiques réelles, puis examine la cohérence du changement avec le profil et explique les compromis.
 
-> ⚠️ **Avertissement.** Il s'agit d'une comparaison historique hypothétique à but pédagogique. Ce n'est ni une prévision, ni une recommandation, ni un conseil en placement. Les personas et les portefeuilles sont fictifs.
+> **Avertissement.** Il s'agit d'une comparaison historique hypothétique à but pédagogique. Ce n'est ni une prévision, ni une recommandation, ni un conseil en placement. Les personas et les portefeuilles sont fictifs.
 
 ### Les trois parcours
 
@@ -238,47 +238,112 @@ dans `frontend/`, reliée à l'API FastAPI de `api/`. Le navigateur ne lit jamai
 les fichiers de marché et ne reçoit aucune clé AWS : tous les calculs, contrôles
 et appels Bedrock restent côté Python.
 
-Prérequis : Python 3.12+, Node.js 20+ et npm.
+### Lancement de l'application
+
+**Prérequis** : Python 3.12+, Node.js 20+ et npm.
+
+#### Windows (PowerShell)
 
 ```powershell
-# Terminal 1 — API
+# Terminal 1 — Lancer l'API backend
 py -3.12 -m pip install -e .
 $env:BEDROCK_MODEL_ID = "us.anthropic.claude-opus-5-5"
 py -3.12 -m uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
 
-# Terminal 2 — frontend
-Set-Location frontend
+# Terminal 2 — Lancer le frontend
+cd frontend
 npm install
 npm run dev
 ```
 
-Ouvrir <http://localhost:5173>. Vite relaie `/api` vers
-`http://127.0.0.1:8000`. Pour une API différente, définir `VITE_API_URL` avant
-de démarrer Vite. Les requêtes longues affichent un état de chargement et une
-réponse devenue obsolète est ignorée si le scénario change entre-temps.
+#### macOS / Linux
 
-Sans Bedrock, définir `$env:BEDROCK_MODEL_ID = ""` avant de lancer l'API. Les
-calculs et contrôles déterministes restent disponibles avec le statut `partial`;
-l'interface indique alors que l'explication IA est indisponible.
+```bash
+# Terminal 1 — Lancer l'API backend
+python3 -m pip install -e .
+export BEDROCK_MODEL_ID="us.anthropic.claude-opus-5-5"
+python3 -m uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+
+# Terminal 2 — Lancer le frontend
+cd frontend
+npm install
+npm run dev
+```
+
+**Ouvrir l'application** : <http://localhost:5173>
+
+Vite relaie automatiquement `/api` vers `http://127.0.0.1:8000`. Pour une API différente, définir `VITE_API_URL` avant de démarrer Vite.
+
+**Mode sans AWS** : Pour utiliser l'application sans Bedrock, définir `$env:BEDROCK_MODEL_ID = ""` (Windows) ou `export BEDROCK_MODEL_ID=""` (macOS/Linux) avant de lancer l'API. Les calculs et contrôles déterministes restent disponibles avec le statut `partial`; l'interface indique alors que l'explication IA est indisponible.
+
+### Parcours utilisateur dans l'application React
+
+L'application offre plusieurs parcours pour explorer les simulations de portefeuille :
+
+#### 1. Parcours découverte (démarrage rapide)
+
+1. **Page d'accueil** : Vue d'ensemble de l'application avec trois profils fictifs
+2. **Choisir un profil** : Cliquer sur Amira, Mateo ou Robert dans le "Démarrage rapide"
+3. **Simuler un ajout** : Sélectionner un actif et définir un poids (1-50%)
+4. **Lancer l'analyse** : Le système calcule les métriques et génère une explication IA
+5. **Explorer les résultats** : Comparer avant/après, consulter les graphiques et les compromis
+
+#### 2. Parcours personnalisation (éditeur de portefeuille)
+
+1. **Accéder à l'éditeur** : Menu "Éditeur de portefeuille"
+2. **Sélectionner un profil** : Amira, Mateo ou Robert
+3. **Ajuster les poids existants** : Utiliser les curseurs pour modifier les pondérations
+4. **Ajouter de nouveaux actifs** : Sélectionner parmi les actifs disponibles
+5. **Définir les nouvelles pondérations** : Ajuster les poids des actifs ajoutés
+6. **Normaliser** : Option automatique pour ajuster à 100%
+7. **Analyser** : Lancer une analyse complète du portefeuille personnalisé
+8. **Consulter les résultats** : Comparer les performances avant/après
+
+#### 3. Parcours exploration approfondie
+
+1. **Consulter les profils** : Page "Profils fictifs" pour voir tous les détails (objectifs, horizons, préférences)
+2. **Vérifier la cohérence** : Page "Cohérence du scénario" pour identifier les tensions avec le profil
+3. **Poser des questions** : Assistant IA flottant accessible via l'icône de chat
+   - Questions liées à l'analyse en cours
+   - Explications des compromis
+   - Clarifications sur les métriques
+4. **Consulter les sources** : Page "Sources et méthode" pour la transparence méthodologique
+
+#### 4. Parcours gestion des scénarios
+
+1. **Enregistrer un scénario** : Après une analyse, cliquer sur "Enregistrer"
+2. **Consulter les scénarios** : Page "Scénarios" pour voir tous les scénarios enregistrés
+3. **Rouvrir un scénario** : Charger les paramètres d'un scénario précédent
+4. **Comparer** : Analyser plusieurs variantes du même profil
+
+#### Navigation et fonctionnalités transversales
+
+- **Menu latéral** : Navigation entre toutes les pages
+- **Thème clair/sombre** : Bouton en haut à droite
+- **Indicateur de scénario actif** : Affiche le profil et l'actif en cours dans le menu latéral
+- **Assistant flottant** : Accessible depuis toutes les pages pour poser des questions
+
+### Architecture technique
 
 Les réponses nécessaires aux questions de suivi sont conservées dans la mémoire
 du processus API pendant une heure, avec un maximum de 100 entrées. Elles sont
 perdues au redémarrage. Ce stockage convient à la démonstration locale avec un
 seul processus, pas à un déploiement multi-instance.
 
-Le parcours React comprend une vue d'ensemble, les profils fictifs, la simulation,
-la cohérence, l'assistant, les scénarios enregistrés et les sources. Aucune
-analyse n'est lancée avant une action explicite. Les questions de l'assistant
-sont indépendantes et liées à une analyse précise; aucun historique de chat
-n'est transmis. Les scénarios enregistrés sont conservés dans le `localStorage`
-de cet appareil et contiennent les paramètres et la date d'enregistrement, pas
-un instantané des résultats historiques. La résolution des preuves de l'analyse
-utilise le cache mémoire API et devient indisponible après son expiration.
+Les questions de l'assistant sont indépendantes et liées à une analyse précise; 
+aucun historique de chat n'est transmis. Les scénarios enregistrés sont conservés 
+dans le `localStorage` du navigateur et contiennent les paramètres et la date 
+d'enregistrement, pas un instantané des résultats historiques. La résolution des 
+preuves de l'analyse utilise le cache mémoire API et devient indisponible après 
+son expiration.
 
-Vérifications frontend :
+Les requêtes longues affichent un état de chargement et une réponse devenue 
+obsolète est ignorée si le scénario change entre-temps.
+
+### Vérifications frontend
 
 ```powershell
-Set-Location frontend
+cd frontend
 npm test
 npm run typecheck
 npm run lint
