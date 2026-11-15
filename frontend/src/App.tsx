@@ -5,6 +5,7 @@ import { scenarioKey } from "./lib/format";
 import type {
   AnalysisResponse,
   Bootstrap,
+  CustomPortfolioResponse,
   InterpretResponse,
   Persona,
   SavedScenario,
@@ -23,11 +24,14 @@ import {
   ProfilesPage,
   SavedScenariosPage,
 } from "./features/pages";
+import { PortfolioEditor } from "./features/PortfolioEditor";
+import { CustomPortfolioResults } from "./features/CustomPortfolioResults";
 
 type PageId =
   | "overview"
   | "profiles"
   | "simulation"
+  | "portfolio-editor"
   | "coherence"
   | "assistant"
   | "scenarios"
@@ -38,9 +42,10 @@ const NAV_ITEMS: Array<{ id: PageId; label: string }> = [
   { id: "overview", label: "Vue d’ensemble" },
   { id: "profiles", label: "Profils fictifs" },
   { id: "simulation", label: "Simuler un ajout" },
+  { id: "portfolio-editor", label: "Éditeur de portefeuille" },
   { id: "coherence", label: "Cohérence du scénario" },
   { id: "assistant", label: "Assistant" },
-  { id: "scenarios", label: "Mes scénarios" },
+  { id: "scenarios", label: "Scénarios" },
   { id: "sources", label: "Sources et méthode" },
 ];
 
@@ -89,6 +94,7 @@ function App() {
   const [data, setData] = useState<Bootstrap | null>(null);
   const [draft, setDraft] = useState<ScenarioRequest | null>(null);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
+  const [customPortfolioResult, setCustomPortfolioResult] = useState<CustomPortfolioResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [formValid, setFormValid] = useState(true);
   const [error, setError] = useState("");
@@ -477,6 +483,27 @@ function App() {
                   comparison={<ComparisonPage draft={draft} personaName={persona.name} invalid={!formValid} assets={data.assets} />}
                 />
               </div>
+            </div>
+          )}
+          {page === "portfolio-editor" && data && (
+            <div className="portfolio-editor-layout">
+              {!customPortfolioResult || customPortfolioResult.status === "error" ? (
+                <PortfolioEditor
+                  data={data}
+                  onResult={result => {
+                    setCustomPortfolioResult(result);
+                    if (result.status === "success") {
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }
+                  }}
+                />
+              ) : (
+                <CustomPortfolioResults
+                  result={customPortfolioResult}
+                  assets={data.assets}
+                  onNewAnalysis={() => setCustomPortfolioResult(null)}
+                />
+              )}
             </div>
           )}
           {page === "coherence" && (

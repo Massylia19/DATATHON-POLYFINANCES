@@ -1,4 +1,4 @@
-import type { AnalysisResponse, Bootstrap, ComparisonResponse, EvidenceResponse, FollowUpResponse, InterpretResponse, ScenarioRequest } from "../types";
+import type { AnalysisResponse, Bootstrap, ComparisonResponse, CustomPortfolioRequest, CustomPortfolioResponse, EvidenceResponse, FollowUpResponse, InterpretResponse, ScenarioRequest } from "../types";
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -53,6 +53,7 @@ export const api = {
   bootstrap: (signal?: AbortSignal) => request<Bootstrap>("/api/bootstrap", undefined, signal),
   analyze: (payload: ScenarioRequest, signal?: AbortSignal) => request<AnalysisResponse>("/api/analyses", { method: "POST", body: JSON.stringify(payload) }, signal, AGENT_TIMEOUT_MS),
   compare: (payload: { persona_id: string; symbol: string; weight_a_pct: number; weight_b_pct: number }, signal?: AbortSignal) => request<ComparisonResponse>("/api/comparisons", { method: "POST", body: JSON.stringify(payload) }, signal, COMPARISON_TIMEOUT_MS),
+  analyzeCustomPortfolio: (payload: CustomPortfolioRequest, signal?: AbortSignal) => request<CustomPortfolioResponse>("/api/custom-portfolio", { method: "POST", body: JSON.stringify(payload) }, signal, AGENT_TIMEOUT_MS),
   interpret: (text: string, current_request?: ScenarioRequest, signal?: AbortSignal) => request<InterpretResponse>("/api/interpret", { method: "POST", body: JSON.stringify({ text, current_request }) }, signal, AGENT_TIMEOUT_MS),
   followUp: (analysis_id: string, question: string, signal?: AbortSignal) => request<FollowUpResponse>("/api/follow-ups", { method: "POST", body: JSON.stringify({ analysis_id, question }) }, signal, AGENT_TIMEOUT_MS),
   evidence: (analysis_id: string, references: string[], signal?: AbortSignal) => request<EvidenceResponse>("/api/evidence", { method: "POST", body: JSON.stringify({ analysis_id, references }) }, signal),
