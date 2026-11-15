@@ -229,7 +229,52 @@ Diagnostic de l'accès AWS : voir [docs/aws_bedrock_diagnostic.md](docs/aws_bedr
 
 ---
 
-## Interface
+## Application web React et API FastAPI
+
+L'entrée principale documentée est désormais une application React + TypeScript
+dans `frontend/`, reliée à l'API FastAPI de `api/`. Le navigateur ne lit jamais
+les fichiers de marché et ne reçoit aucune clé AWS : tous les calculs, contrôles
+et appels Bedrock restent côté Python.
+
+Prérequis : Python 3.12+, Node.js 20+ et npm.
+
+```powershell
+# Terminal 1 — API
+py -3.12 -m pip install -e .
+$env:BEDROCK_MODEL_ID = "us.anthropic.claude-opus-5-5"
+py -3.12 -m uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+
+# Terminal 2 — frontend
+Set-Location frontend
+npm install
+npm run dev
+```
+
+Ouvrir <http://localhost:5173>. Vite relaie `/api` vers
+`http://127.0.0.1:8000`. Pour une API différente, définir `VITE_API_URL` avant
+de démarrer Vite. Les requêtes longues affichent un état de chargement et une
+réponse devenue obsolète est ignorée si le scénario change entre-temps.
+
+Sans Bedrock, définir `$env:BEDROCK_MODEL_ID = ""` avant de lancer l'API. Les
+calculs et contrôles déterministes restent disponibles avec le statut `partial`;
+l'interface indique alors que l'explication IA est indisponible.
+
+Les réponses nécessaires aux questions de suivi sont conservées dans la mémoire
+du processus API pendant une heure, avec un maximum de 100 entrées. Elles sont
+perdues au redémarrage. Ce stockage convient à la démonstration locale avec un
+seul processus, pas à un déploiement multi-instance.
+
+Vérifications frontend :
+
+```powershell
+Set-Location frontend
+npm test
+npm run typecheck
+npm run lint
+npm run build
+```
+
+### Interface Streamlit historique
 
 L'interface Streamlit (`app.py`, styles dans `styles/style.css`) guide l'utilisateur à travers trois étapes : choisir un personnage fictif, décrire un ajout d'actif, puis comprendre les résultats calculés. Les cartes des profils reprennent uniquement les objectifs, horizons et préférences documentés. Les autres paramètres sont modifiables depuis l'interface.
 
