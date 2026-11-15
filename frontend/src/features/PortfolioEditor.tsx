@@ -2,6 +2,7 @@ import { AlertCircle, Check, Loader2, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Asset, Bootstrap, CustomPortfolioResponse, PersonaId } from "../types";
 import { api } from "../lib/api";
+import { Button, Card } from "../components/ui";
 
 interface PortfolioEditorProps {
   data: Bootstrap;
@@ -131,47 +132,45 @@ export function PortfolioEditor({ data, onResult }: PortfolioEditorProps) {
   const isBalanced = weightDelta < 0.01;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-semibold">Éditeur de portefeuille</h1>
-        <p className="text-sm text-muted-foreground mt-2">
+    <div className="page-stack">
+      <section className="page-intro compact">
+        <p className="eyebrow">Personnalisation avancée</p>
+        <h1>Éditeur de portefeuille</h1>
+        <p className="help">
           Modifiez plusieurs actifs simultanément et ajustez tous les poids
         </p>
-      </div>
+      </section>
 
       {/* Persona Selection */}
-      <div>
-        <label className="block text-sm font-medium mb-2">Profil d'investisseur</label>
-        <div className="flex flex-wrap gap-2">
+      <Card>
+        <label>Profil d'investisseur</label>
+        <div className="persona-selector">
           {data.personas.map(p => (
             <button
               key={p.id}
+              type="button"
               onClick={() => setSelectedPersonaId(p.id)}
-              className={`px-4 py-2 rounded-lg border transition-colors ${selectedPersonaId === p.id
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-card text-card-foreground border-border hover:bg-accent"
-                }`}
+              aria-pressed={selectedPersonaId === p.id}
             >
               {p.name}
             </button>
           ))}
         </div>
-      </div>
+      </Card>
 
       {persona && (
-        <div className="p-4 bg-card border border-border rounded-lg">
-          <div className="text-sm">
-            <div className="font-medium">{persona.name}</div>
-            <div className="text-muted-foreground">{persona.objective}</div>
-          </div>
-        </div>
+        <Card className="profile">
+          <strong>{persona.name}</strong>
+          <p>{persona.objective}</p>
+        </Card>
       )}
 
       {/* Existing Assets */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">1. Ajuster les poids des actifs existants</h2>
-        <div className="space-y-4">
+      <Card>
+        <div className="section-heading">
+          <h2>1. Ajuster les poids des actifs existants</h2>
+        </div>
+        <ul className="holding-list">
           {Object.entries(weights)
             .filter(([_, weight]) => !selectedNewAssets.includes(_) || weight > 0)
             .sort(([a], [b]) => a.localeCompare(b))
@@ -179,12 +178,12 @@ export function PortfolioEditor({ data, onResult }: PortfolioEditorProps) {
               const asset = assetsBySymbol[symbol];
               if (!asset) return null;
               return (
-                <div key={symbol} className="flex items-center gap-4 p-4 bg-card border border-border rounded-lg">
-                  <div className="flex-1">
-                    <div className="font-medium">{asset.name}</div>
-                    <div className="text-sm text-muted-foreground">{asset.ticker} · {asset.asset_class_label}</div>
+                <li key={symbol} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "12px", alignItems: "center", padding: "12px", border: "1px solid var(--border)", borderRadius: "10px", background: "var(--surface-2)" }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>{asset.name}</div>
+                    <div className="help">{asset.ticker} · {asset.asset_class_label}</div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <input
                       type="range"
                       min="0"
@@ -192,7 +191,7 @@ export function PortfolioEditor({ data, onResult }: PortfolioEditorProps) {
                       step="0.5"
                       value={weight}
                       onChange={e => handleWeightChange(symbol, Number(e.target.value))}
-                      className="w-32"
+                      style={{ width: "120px" }}
                     />
                     <input
                       type="number"
@@ -201,184 +200,214 @@ export function PortfolioEditor({ data, onResult }: PortfolioEditorProps) {
                       step="0.5"
                       value={weight.toFixed(1)}
                       onChange={e => handleWeightChange(symbol, Number(e.target.value))}
-                      className="w-20 px-2 py-1 bg-background border border-border rounded text-right"
+                      className="number-input"
+                      style={{ width: "70px" }}
                     />
-                    <span className="text-sm w-4">%</span>
+                    <span className="help" style={{ width: "14px" }}>%</span>
                     <button
+                      type="button"
                       onClick={() => handleRemoveAsset(symbol)}
-                      className="p-2 hover:bg-destructive/10 text-destructive rounded transition-colors"
+                      className="button"
+                      style={{ minHeight: "36px", padding: "6px", border: "1px solid var(--error)", color: "var(--error)" }}
                       title="Retirer"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 style={{ width: "16px", height: "16px" }} />
                     </button>
                   </div>
-                </div>
+                </li>
               );
             })}
-        </div>
-      </div>
+        </ul>
+      </Card>
 
       {/* Add New Assets */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">2. Ajouter de nouveaux actifs</h2>
+      <Card>
+        <div className="section-heading">
+          <h2>2. Ajouter de nouveaux actifs</h2>
+        </div>
         {availableAssets.length > 0 ? (
-          <div className="space-y-4">
-            <div className="max-h-60 overflow-y-auto space-y-2 p-2 bg-card/50 border border-border rounded-lg">
+          <div style={{ display: "grid", gap: "16px" }}>
+            <div className="asset-options">
               {availableAssets.map(asset => (
                 <button
                   key={asset.ticker}
+                  type="button"
                   onClick={() => handleToggleAsset(asset.ticker)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left ${selectedNewAssets.includes(asset.ticker)
-                    ? "bg-primary/10 border-primary"
-                    : "bg-card border-border hover:bg-accent"
-                    }`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    ...(selectedNewAssets.includes(asset.ticker) ? {
+                      background: "color-mix(in srgb, var(--accent) 12%, var(--surface))",
+                      borderColor: "var(--accent)"
+                    } : {})
+                  }}
                 >
-                  <div className={`w-5 h-5 rounded border flex items-center justify-center ${selectedNewAssets.includes(asset.ticker)
-                    ? "bg-primary border-primary"
-                    : "border-border"
-                    }`}>
+                  <div style={{
+                    width: "20px",
+                    height: "20px",
+                    border: "2px solid var(--border)",
+                    borderRadius: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    ...(selectedNewAssets.includes(asset.ticker) ? {
+                      background: "var(--accent)",
+                      borderColor: "var(--accent)"
+                    } : {})
+                  }}>
                     {selectedNewAssets.includes(asset.ticker) && (
-                      <Check className="w-3 h-3 text-primary-foreground" />
+                      <Check style={{ width: "14px", height: "14px", color: "var(--accent-text)" }} />
                     )}
                   </div>
-                  <div className="flex-1">
-                    <div className="font-medium">{asset.name}</div>
-                    <div className="text-sm text-muted-foreground">{asset.ticker} · {asset.asset_class_label}</div>
+                  <div style={{ flex: 1, textAlign: "left" }}>
+                    <div style={{ fontWeight: 700 }}>{asset.name}</div>
+                    <span>{asset.ticker} · {asset.asset_class_label}</span>
                   </div>
                 </button>
               ))}
             </div>
 
             {selectedNewAssets.length > 0 && (
-              <div className="space-y-4">
-                <div className="text-sm text-muted-foreground">
+              <div style={{ display: "grid", gap: "12px" }}>
+                <p className="help">
                   Définissez les pondérations pour les nouveaux actifs
-                </div>
-                {selectedNewAssets.map(symbol => {
-                  const asset = assetsBySymbol[symbol];
-                  const weight = weights[symbol] || 0;
-                  return (
-                    <div key={symbol} className="flex items-center gap-4 p-4 bg-card border border-primary/20 rounded-lg">
-                      <div className="flex-1">
-                        <div className="font-medium">{asset.name}</div>
-                        <div className="text-sm text-muted-foreground">{asset.ticker} · {asset.asset_class_label}</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="range"
-                          min="0.5"
-                          max="50"
-                          step="0.5"
-                          value={weight}
-                          onChange={e => handleWeightChange(symbol, Number(e.target.value))}
-                          className="w-32"
-                        />
-                        <input
-                          type="number"
-                          min="0.5"
-                          max="50"
-                          step="0.5"
-                          value={weight.toFixed(1)}
-                          onChange={e => handleWeightChange(symbol, Number(e.target.value))}
-                          className="w-20 px-2 py-1 bg-background border border-border rounded text-right"
-                        />
-                        <span className="text-sm w-4">%</span>
-                        <button
-                          onClick={() => handleRemoveAsset(symbol)}
-                          className="p-2 hover:bg-destructive/10 text-destructive rounded transition-colors"
-                          title="Retirer"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                </p>
+                <ul className="holding-list">
+                  {selectedNewAssets.map(symbol => {
+                    const asset = assetsBySymbol[symbol];
+                    const weight = weights[symbol] || 0;
+                    return (
+                      <li key={symbol} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "12px", alignItems: "center", padding: "12px", border: "2px solid var(--accent)", borderRadius: "10px", background: "var(--surface-2)" }}>
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{asset.name}</div>
+                          <div className="help">{asset.ticker} · {asset.asset_class_label}</div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <input
+                            type="range"
+                            min="0.5"
+                            max="50"
+                            step="0.5"
+                            value={weight}
+                            onChange={e => handleWeightChange(symbol, Number(e.target.value))}
+                            style={{ width: "120px" }}
+                          />
+                          <input
+                            type="number"
+                            min="0.5"
+                            max="50"
+                            step="0.5"
+                            value={weight.toFixed(1)}
+                            onChange={e => handleWeightChange(symbol, Number(e.target.value))}
+                            className="number-input"
+                            style={{ width: "70px" }}
+                          />
+                          <span className="help" style={{ width: "14px" }}>%</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAsset(symbol)}
+                            className="button"
+                            style={{ minHeight: "36px", padding: "6px", border: "1px solid var(--error)", color: "var(--error)" }}
+                            title="Retirer"
+                          >
+                            <X style={{ width: "16px", height: "16px" }} />
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             )}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground p-4 bg-card border border-border rounded-lg">
+          <p className="help" style={{ padding: "12px", border: "1px solid var(--border)", borderRadius: "10px", background: "var(--surface-2)" }}>
             Tous les actifs disponibles sont déjà dans le portefeuille.
           </p>
         )}
-      </div>
+      </Card>
 
       {/* Summary */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">3. Résumé du nouveau portefeuille</h2>
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="p-4 bg-card border border-border rounded-lg">
-              <div className="text-sm text-muted-foreground mb-1">Total des pondérations</div>
-              <div className="text-2xl font-semibold">{totalWeight.toFixed(1)}%</div>
+      <Card>
+        <div className="section-heading">
+          <h2>3. Résumé du nouveau portefeuille</h2>
+        </div>
+        <div style={{ display: "grid", gap: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+            <div className="metric-card">
+              <div className="metric-head">
+                <h3>Total des pondérations</h3>
+              </div>
+              <div className="metric-after">{totalWeight.toFixed(1)}%</div>
             </div>
-            <div className="p-4 bg-card border border-border rounded-lg">
-              <div className="text-sm text-muted-foreground mb-1">État</div>
-              <div className="flex items-center gap-2">
+            <div className="metric-card">
+              <div className="metric-head">
+                <h3>État</h3>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 {isBalanced ? (
                   <>
-                    <Check className="w-5 h-5 text-green-500" />
-                    <span className="font-semibold text-green-500">Équilibré</span>
+                    <Check style={{ width: "20px", height: "20px", color: "var(--accent)" }} />
+                    <span style={{ fontWeight: 700, color: "var(--accent)" }}>Équilibré</span>
                   </>
                 ) : (
                   <>
-                    <AlertCircle className="w-5 h-5 text-yellow-500" />
-                    <span className="font-semibold text-yellow-500">
+                    <AlertCircle style={{ width: "20px", height: "20px", color: "var(--warning)" }} />
+                    <span style={{ fontWeight: 700, color: "var(--warning)" }}>
                       Écart: {weightDelta > 0 ? "+" : ""}{(totalWeight - 100).toFixed(1)}%
                     </span>
                   </>
                 )}
               </div>
             </div>
-            <div className="p-4 bg-card border border-border rounded-lg">
-              <button
-                onClick={handleReset}
-                className="w-full px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
-              >
+            <div className="metric-card">
+              <Button type="button" onClick={handleReset} style={{ width: "100%" }}>
                 Réinitialiser
-              </button>
+              </Button>
             </div>
           </div>
 
-          <label className="flex items-center gap-2 p-4 bg-card border border-border rounded-lg cursor-pointer">
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px", border: "1px solid var(--border)", borderRadius: "10px", background: "var(--surface-2)", cursor: "pointer" }}>
             <input
               type="checkbox"
               checked={autoNormalize}
               onChange={e => setAutoNormalize(e.target.checked)}
-              className="w-4 h-4"
+              style={{ width: "18px", height: "18px" }}
             />
-            <span className="text-sm">Normaliser automatiquement à 100%</span>
+            <span>Normaliser automatiquement à 100%</span>
           </label>
 
           {error && (
-            <div className="p-4 bg-destructive/10 border border-destructive text-destructive rounded-lg">
+            <div className="error">
               {error}
             </div>
           )}
 
-          <button
+          <Button
+            type="button"
+            className="primary"
             onClick={handleAnalyze}
             disabled={!canAnalyze || analyzing}
-            className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            style={{ width: "100%", minHeight: "48px" }}
           >
             {analyzing ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 style={{ width: "20px", height: "20px" }} className="spinner" />
                 Analyse en cours...
               </>
             ) : (
               <>Analyser ce portefeuille</>
             )}
-          </button>
+          </Button>
 
           {!canAnalyze && !autoNormalize && (
-            <p className="text-sm text-muted-foreground text-center">
+            <p className="help" style={{ textAlign: "center" }}>
               Veuillez équilibrer le portefeuille à 100% ou activer la normalisation automatique.
             </p>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
