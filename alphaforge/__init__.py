@@ -1,5 +1,5 @@
 """Outils de comparaison historique pour le projet AlphaForge."""
 
-from .engine import apply_scenario, compare_case
+from .engine import EngineError, apply_scenario, compare_case, run_analysis
 
-__all__ = ["apply_scenario", "compare_case"]
+__all__ = ["EngineError", "apply_scenario", "compare_case", "run_analysis"]
