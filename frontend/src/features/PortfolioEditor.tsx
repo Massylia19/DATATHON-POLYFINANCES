@@ -301,18 +301,18 @@ export function PortfolioEditor({ data, onResult }: PortfolioEditorProps) {
   const isBalanced = weightDelta < 0.01;
 
   return (
-    <div className="page-stack">
-      <section className="page-intro compact">
-        <p className="eyebrow">Personnalisation avancée</p>
-        <h1>Éditeur de portefeuille</h1>
-        <p className="help">
+    <div className="page-stack" style={{ gap: "12px" }}>
+      <section className="page-intro compact" style={{ paddingBottom: "4px" }}>
+        <p className="eyebrow" style={{ marginBottom: "3px" }}>Personnalisation avancée</p>
+        <h1 style={{ marginBottom: "4px" }}>Éditeur de portefeuille</h1>
+        <p className="help" style={{ margin: 0, fontSize: "12px" }}>
           Modifiez plusieurs actifs simultanément et ajustez tous les poids
         </p>
       </section>
 
-      {/* Persona Selection */}
-      <Card>
-        <label>Profil d'investisseur</label>
+      {/* Persona Selection and Profile combined */}
+      <Card style={{ padding: "12px 14px" }}>
+        <label style={{ marginBottom: "6px", fontSize: "13px" }}>Profil d'investisseur</label>
         <div className="persona-selector">
           {data.personas.map(p => (
             <button
@@ -325,256 +325,253 @@ export function PortfolioEditor({ data, onResult }: PortfolioEditorProps) {
             </button>
           ))}
         </div>
-      </Card>
-
-      {persona && (
-        <Card className="profile">
-          <strong>{persona.name}</strong>
-          <p>{persona.objective}</p>
-        </Card>
-      )}
-
-      {/* Existing Assets */}
-      <Card>
-        <div className="section-heading">
-          <h2>1. Ajuster les poids des actifs existants</h2>
-        </div>
-        <ul className="holding-list">
-          {Object.entries(weights)
-            .filter(([_, weight]) => !selectedNewAssets.includes(_) || weight > 0)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([symbol, weight]) => {
-              const asset = assetsBySymbol[symbol];
-              if (!asset) return null;
-              return (
-                <li key={symbol} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "12px", alignItems: "center", padding: "12px", border: "1px solid var(--border)", borderRadius: "10px", background: "var(--surface-2)" }}>
-                  <div>
-                    <div style={{ fontWeight: 700 }}>{asset.name}</div>
-                    <div className="help">{asset.ticker} · {asset.asset_class_label}</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="0.5"
-                      value={weight}
-                      onChange={e => handleWeightChange(symbol, Number(e.target.value))}
-                      style={{ width: "120px" }}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.5"
-                      value={weight.toFixed(1)}
-                      onChange={e => handleWeightChange(symbol, Number(e.target.value))}
-                      className="number-input"
-                      style={{ width: "70px" }}
-                    />
-                    <span className="help" style={{ width: "14px" }}>%</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveAsset(symbol)}
-                      className="button"
-                      style={{ minHeight: "36px", padding: "6px", border: "1px solid var(--error)", color: "var(--error)" }}
-                      title="Retirer"
-                    >
-                      <Trash2 style={{ width: "16px", height: "16px" }} />
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-        </ul>
-      </Card>
-
-      {/* Add New Assets */}
-      <Card>
-        <div className="section-heading">
-          <h2>2. Ajouter de nouveaux actifs</h2>
-        </div>
-        {availableAssets.length > 0 ? (
-          <div style={{ display: "grid", gap: "16px" }}>
-            <div className="asset-options">
-              {availableAssets.map(asset => (
-                <button
-                  key={asset.ticker}
-                  type="button"
-                  onClick={() => handleToggleAsset(asset.ticker)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    ...(selectedNewAssets.includes(asset.ticker) ? {
-                      background: "color-mix(in srgb, var(--accent) 12%, var(--surface))",
-                      borderColor: "var(--accent)"
-                    } : {})
-                  }}
-                >
-                  <div style={{
-                    width: "20px",
-                    height: "20px",
-                    border: "2px solid var(--border)",
-                    borderRadius: "4px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    ...(selectedNewAssets.includes(asset.ticker) ? {
-                      background: "var(--accent)",
-                      borderColor: "var(--accent)"
-                    } : {})
-                  }}>
-                    {selectedNewAssets.includes(asset.ticker) && (
-                      <Check style={{ width: "14px", height: "14px", color: "var(--accent-text)" }} />
-                    )}
-                  </div>
-                  <div style={{ flex: 1, textAlign: "left" }}>
-                    <div style={{ fontWeight: 700 }}>{asset.name}</div>
-                    <span>{asset.ticker} · {asset.asset_class_label}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {selectedNewAssets.length > 0 && (
-              <div style={{ display: "grid", gap: "12px" }}>
-                <p className="help">
-                  Définissez les pondérations pour les nouveaux actifs
-                </p>
-                <ul className="holding-list">
-                  {selectedNewAssets.map(symbol => {
-                    const asset = assetsBySymbol[symbol];
-                    const weight = weights[symbol] || 0;
-                    return (
-                      <li key={symbol} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "12px", alignItems: "center", padding: "12px", border: "2px solid var(--accent)", borderRadius: "10px", background: "var(--surface-2)" }}>
-                        <div>
-                          <div style={{ fontWeight: 700 }}>{asset.name}</div>
-                          <div className="help">{asset.ticker} · {asset.asset_class_label}</div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <input
-                            type="range"
-                            min="0.5"
-                            max="50"
-                            step="0.5"
-                            value={weight}
-                            onChange={e => handleWeightChange(symbol, Number(e.target.value))}
-                            style={{ width: "120px" }}
-                          />
-                          <input
-                            type="number"
-                            min="0.5"
-                            max="50"
-                            step="0.5"
-                            value={weight.toFixed(1)}
-                            onChange={e => handleWeightChange(symbol, Number(e.target.value))}
-                            className="number-input"
-                            style={{ width: "70px" }}
-                          />
-                          <span className="help" style={{ width: "14px" }}>%</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveAsset(symbol)}
-                            className="button"
-                            style={{ minHeight: "36px", padding: "6px", border: "1px solid var(--error)", color: "var(--error)" }}
-                            title="Retirer"
-                          >
-                            <X style={{ width: "16px", height: "16px" }} />
-                          </button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
+        {persona && (
+          <div className="profile" style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid var(--border)", gap: "2px" }}>
+            <strong style={{ fontSize: "14px" }}>{persona.name}</strong>
+            <p style={{ fontSize: "12px", margin: "2px 0 0" }}>{persona.objective}</p>
           </div>
-        ) : (
-          <p className="help" style={{ padding: "12px", border: "1px solid var(--border)", borderRadius: "10px", background: "var(--surface-2)" }}>
-            Tous les actifs disponibles sont déjà dans le portefeuille.
-          </p>
         )}
       </Card>
 
-      {/* Summary */}
-      <Card>
-        <div className="section-heading">
-          <h2>3. Résumé du nouveau portefeuille</h2>
-        </div>
-        <div style={{ display: "grid", gap: "16px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
-            <div className="metric-card">
-              <div className="metric-head">
-                <h3>Total des pondérations</h3>
+      {/* Combined: Existing Assets and Add New Assets */}
+      <Card style={{ padding: "12px 14px" }}>
+        <details>
+          <summary style={{ fontWeight: 700, fontSize: "15px", marginBottom: "8px", cursor: "pointer" }}>
+            1. Ajuster les poids des actifs existants
+          </summary>
+          <ul className="holding-list" style={{ marginTop: "8px" }}>
+            {Object.entries(weights)
+              .filter(([_, weight]) => !selectedNewAssets.includes(_) || weight > 0)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([symbol, weight]) => {
+                const asset = assetsBySymbol[symbol];
+                if (!asset) return null;
+                return (
+                  <li key={symbol} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "12px", alignItems: "center", padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface-2)" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: "13px" }}>{asset.name}</div>
+                      <div className="help" style={{ fontSize: "11px" }}>{asset.ticker} · {asset.asset_class_label}</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={weight}
+                        onChange={e => handleWeightChange(symbol, Number(e.target.value))}
+                        style={{ width: "100px" }}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={weight.toFixed(1)}
+                        onChange={e => handleWeightChange(symbol, Number(e.target.value))}
+                        className="number-input"
+                        style={{ width: "75px", fontSize: "13px" }}
+                      />
+                      <span className="help" style={{ width: "14px" }}>%</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAsset(symbol)}
+                        className="button"
+                        style={{ minHeight: "32px", padding: "6px", border: "1px solid var(--error)", color: "var(--error)" }}
+                        title="Retirer"
+                      >
+                        <Trash2 style={{ width: "14px", height: "14px" }} />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+          </ul>
+        </details>
+
+        <details style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+          <summary style={{ fontWeight: 700, fontSize: "15px", marginBottom: "8px", cursor: "pointer" }}>
+            2. Ajouter de nouveaux actifs {selectedNewAssets.length > 0 && `(${selectedNewAssets.length})`}
+          </summary>
+          {availableAssets.length > 0 ? (
+            <div style={{ display: "grid", gap: "12px" }}>
+              <div className="asset-options" style={{ maxHeight: "150px" }}>
+                {availableAssets.map(asset => (
+                  <button
+                    key={asset.ticker}
+                    type="button"
+                    onClick={() => handleToggleAsset(asset.ticker)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "5px 7px",
+                      fontSize: "12px",
+                      ...(selectedNewAssets.includes(asset.ticker) ? {
+                        background: "color-mix(in srgb, var(--accent) 12%, var(--surface))",
+                        borderColor: "var(--accent)"
+                      } : {})
+                    }}
+                  >
+                    <div style={{
+                      width: "16px",
+                      height: "16px",
+                      border: "2px solid var(--border)",
+                      borderRadius: "3px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      ...(selectedNewAssets.includes(asset.ticker) ? {
+                        background: "var(--accent)",
+                        borderColor: "var(--accent)"
+                      } : {})
+                    }}>
+                      {selectedNewAssets.includes(asset.ticker) && (
+                        <Check style={{ width: "11px", height: "11px", color: "var(--accent-text)" }} />
+                      )}
+                    </div>
+                    <div style={{ flex: 1, textAlign: "left" }}>
+                      <div style={{ fontWeight: 700, fontSize: "12px" }}>{asset.name}</div>
+                      <span style={{ fontSize: "11px" }}>{asset.ticker} · {asset.asset_class_label}</span>
+                    </div>
+                  </button>
+                ))}
               </div>
-              <div className="metric-after">{totalWeight.toFixed(1)}%</div>
-            </div>
-            <div className="metric-card">
-              <div className="metric-head">
-                <h3>État</h3>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                {isBalanced ? (
-                  <>
-                    <Check style={{ width: "20px", height: "20px", color: "var(--accent)" }} />
-                    <span style={{ fontWeight: 700, color: "var(--accent)" }}>Équilibré</span>
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle style={{ width: "20px", height: "20px", color: "var(--warning)" }} />
-                    <span style={{ fontWeight: 700, color: "var(--warning)" }}>
-                      Écart: {(totalWeight - 100) > 0 ? "+" : ""}{(totalWeight - 100).toFixed(1)}%
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="metric-card">
-              <Button type="button" onClick={handleReset} style={{ width: "100%" }}>
-                Réinitialiser
-              </Button>
-            </div>
-          </div>
 
-          <label style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px", border: "1px solid var(--border)", borderRadius: "10px", background: "var(--surface-2)", cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={autoNormalize}
-              onChange={e => setAutoNormalize(e.target.checked)}
-              style={{ width: "18px", height: "18px" }}
-            />
-            <span>Normaliser automatiquement à 100%</span>
-          </label>
-
-          {error && (
-            <div className="error">
-              {error}
+              {selectedNewAssets.length > 0 && (
+                <div style={{ display: "grid", gap: "6px", marginTop: "4px" }}>
+                  <p className="help" style={{ margin: 0, fontSize: "11px" }}>
+                    Définissez les pondérations pour les nouveaux actifs
+                  </p>
+                  <ul className="holding-list" style={{ gap: "8px", margin: 0 }}>
+                    {selectedNewAssets.map(symbol => {
+                      const asset = assetsBySymbol[symbol];
+                      const weight = weights[symbol] || 0;
+                      return (
+                        <li key={symbol} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "8px", alignItems: "center", padding: "8px", border: "2px solid var(--accent)", borderRadius: "8px", background: "var(--surface-2)" }}>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: "13px" }}>{asset.name}</div>
+                            <div className="help" style={{ fontSize: "11px" }}>{asset.ticker} · {asset.asset_class_label}</div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="50"
+                              step="0.5"
+                              value={weight}
+                              onChange={e => handleWeightChange(symbol, Number(e.target.value))}
+                              style={{ width: "100px" }}
+                            />
+                            <input
+                              type="number"
+                              min="0.5"
+                              max="50"
+                              step="0.5"
+                              value={weight.toFixed(1)}
+                              onChange={e => handleWeightChange(symbol, Number(e.target.value))}
+                              className="number-input"
+                              style={{ width: "75px", fontSize: "13px" }}
+                            />
+                            <span className="help" style={{ width: "14px" }}>%</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveAsset(symbol)}
+                              className="button"
+                              style={{ minHeight: "32px", padding: "6px", border: "1px solid var(--error)", color: "var(--error)" }}
+                              title="Retirer"
+                            >
+                              <X style={{ width: "14px", height: "14px" }} />
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
             </div>
-          )}
-
-          <Button
-            type="button"
-            className="primary"
-            onClick={handleAnalyze}
-            disabled={!canAnalyze || analyzing}
-            style={{ width: "100%", minHeight: "48px" }}
-          >
-            {analyzing ? (
-              <>
-                <Loader2 style={{ width: "20px", height: "20px" }} className="spinner" />
-                Analyse en cours...
-              </>
-            ) : (
-              <>Analyser ce portefeuille</>
-            )}
-          </Button>
-
-          {!canAnalyze && !autoNormalize && (
-            <p className="help" style={{ textAlign: "center" }}>
-              Veuillez équilibrer le portefeuille à 100% ou activer la normalisation automatique.
+          ) : (
+            <p className="help" style={{ padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface-2)", margin: 0 }}>
+              Tous les actifs disponibles sont déjà dans le portefeuille.
             </p>
           )}
+        </details>
+
+        {/* Summary section now in the same card */}
+        <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+          <h3 style={{ fontSize: "15px", fontWeight: 700, marginBottom: "10px" }}>3. Résumé et analyse</h3>
+          <div style={{ display: "grid", gap: "10px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "8px" }}>
+              <div style={{ padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface-2)" }}>
+                <div className="help" style={{ marginBottom: "3px", fontSize: "11px" }}>Total</div>
+                <div style={{ fontSize: "20px", fontWeight: 700 }}>{totalWeight.toFixed(1)}%</div>
+              </div>
+              <div style={{ padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface-2)" }}>
+                <div className="help" style={{ marginBottom: "3px", fontSize: "11px" }}>État</div>
+                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                  {isBalanced ? (
+                    <>
+                      <Check style={{ width: "16px", height: "16px", color: "var(--accent)" }} />
+                      <span style={{ fontWeight: 700, color: "var(--accent)", fontSize: "13px" }}>Équilibré</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle style={{ width: "16px", height: "16px", color: "var(--warning)" }} />
+                      <span style={{ fontWeight: 700, color: "var(--warning)", fontSize: "13px" }}>
+                        {(totalWeight - 100) > 0 ? "+" : ""}{(totalWeight - 100).toFixed(1)}%
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div style={{ padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Button type="button" onClick={handleReset} style={{ width: "100%", minHeight: "auto", padding: "5px 8px", fontSize: "12px" }}>
+                  Réinitialiser
+                </Button>
+              </div>
+            </div>
+
+            <label style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface-2)", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={autoNormalize}
+                onChange={e => setAutoNormalize(e.target.checked)}
+                style={{ width: "15px", height: "15px" }}
+              />
+              <span style={{ fontSize: "12px" }}>Normaliser automatiquement à 100%</span>
+            </label>
+
+            {error && (
+              <div className="error" style={{ margin: 0, padding: "6px 8px", fontSize: "12px" }}>
+                {error}
+              </div>
+            )}
+
+            <Button
+              type="button"
+              className="primary"
+              onClick={handleAnalyze}
+              disabled={!canAnalyze || analyzing}
+              style={{ width: "100%", minHeight: "42px", fontSize: "14px" }}
+            >
+              {analyzing ? (
+                <>
+                  <Loader2 style={{ width: "16px", height: "16px" }} className="spinner" />
+                  Analyse en cours...
+                </>
+              ) : (
+                <>Analyser ce portefeuille</>
+              )}
+            </Button>
+
+            {!canAnalyze && !autoNormalize && (
+              <p className="help" style={{ textAlign: "center", margin: 0, fontSize: "12px" }}>
+                Veuillez équilibrer le portefeuille à 100% ou activer la normalisation automatique.
+              </p>
+            )}
+          </div>
         </div>
       </Card>
     </div>
