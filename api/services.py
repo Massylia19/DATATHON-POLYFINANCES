@@ -17,6 +17,7 @@ from agent.service import (
     chat_with_persona,
     interpret_scenario_request,
 )
+from alphaforge.contradiction_checks import detect_profile_contradictions
 from alphaforge.engine import load_asset_universe
 from alphaforge.presentation import format_date_fr
 
@@ -38,7 +39,16 @@ def _json(name: str) -> Any:
 def bootstrap() -> dict[str, Any]:
     assets = load_asset_universe(DATA_DIR / "market" / "assets_universe.csv")
     return {
-        "personas": _json("personas.json")["personas"],
+        "personas": [
+            {
+                **persona,
+                "contradictions": [
+                    {key: finding[key] for key in ("id", "title", "message")}
+                    for finding in detect_profile_contradictions(persona)
+                ],
+            }
+            for persona in _json("personas.json")["personas"]
+        ],
         "portfolios": _json("portfolios.json")["portfolios"],
         "scenarios": _json("scenarios.json")["scenarios"],
         "assets": [asset_for_client({"ticker": symbol, **asset}) for symbol, asset in assets.items()],

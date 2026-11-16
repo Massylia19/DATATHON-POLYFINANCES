@@ -1,6 +1,6 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { BarChart3, Bookmark, Lightbulb, RefreshCw } from "lucide-react";
-import { AlertTriangle, ArrowLeft, BookOpen, CheckCircle2, ChevronDown, Code2, Database, ExternalLink, GitCompare, HelpCircle, LineChart, ListChecks, PieChart, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Flag, BookOpen, CheckCircle2, ChevronDown, Code2, Database, ExternalLink, GitCompare, HelpCircle, LineChart, ListChecks, PieChart, ShieldCheck, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -20,6 +20,8 @@ import { Badge, Button, Card, InfoTip, Spinner } from "../../components/ui";
 import { HistoricalChart } from "../../components/HistoricalChart";
 import { MetricCard } from "../../components/MetricCard";
 import { ContextBar } from "../../components/AnalysisContextBar";
+import { RedFlagBadge } from "../../components/RedFlag";
+import { CONTRADICTION_IDS, plainContradiction, shortName } from "../../lib/redFlags";
 
 const sourceRoles: Record<string, string> = {
   src_prices_daily: "Historique quotidien des prix",
@@ -225,6 +227,7 @@ function EvidenceCards({
 export function CoherencePage({
   result,
   stale,
+  persona = "",
   onNavigate,
 }: {
   result: AnalysisResponse | null;
@@ -238,7 +241,8 @@ export function CoherencePage({
   );
   const counts = {
     consistent: result.checks.filter(check => check.status === "consistent").length,
-    tension: result.checks.filter(check => check.status === "tension").length,
+    redFlag: result.checks.filter(check => CONTRADICTION_IDS.has(check.id)).length,
+    tension: result.checks.filter(check => check.status === "tension" && !CONTRADICTION_IDS.has(check.id)).length,
     insufficient_information: result.checks.filter(check => check.status === "insufficient_information").length,
   };
   return (
@@ -246,6 +250,7 @@ export function CoherencePage({
       <div className="coherence-top">
         <ContextBar result={result} />
         <ul className="status-counts" aria-label="Résumé des contrôles">
+          {counts.redFlag > 0 && <li className="count-red-flag"><Flag aria-hidden="true" />{counts.redFlag} contradiction{counts.redFlag > 1 ? "s" : ""}</li>}
           <li className="count-consistent"><CheckCircle2 aria-hidden="true" />{counts.consistent} cohérent{counts.consistent > 1 ? "s" : ""}</li>
           <li className="count-tension"><AlertTriangle aria-hidden="true" />{counts.tension} vigilance</li>
           <li className="count-insufficient"><HelpCircle aria-hidden="true" />{counts.insufficient_information} insuffisant{counts.insufficient_information > 1 ? "s" : ""}</li>
@@ -253,17 +258,20 @@ export function CoherencePage({
       </div>
       <div className="check-list">
         {result.checks.map((check: ProfileCheck) => {
-          const StatusIcon = statusIcons[check.status];
+          const redFlag = CONTRADICTION_IDS.has(check.id);
+          const StatusIcon = redFlag ? Flag : statusIcons[check.status];
           return (
-            <details className={`check-card ${check.status}`} key={check.id}>
+            <details className={`check-card ${check.status}${redFlag ? " red-flag" : ""}`} key={check.id} open={redFlag || undefined}>
               <summary className="check-card-heading">
-                <span className={`check-icon icon-${check.status}`} aria-hidden="true"><StatusIcon /></span>
+                <span className={`check-icon icon-${redFlag ? "red-flag" : check.status}`} aria-hidden="true"><StatusIcon /></span>
                 <h3>{check.title}</h3>
-                <Badge className={`status-${check.status}`}>{checkStatusLabels[check.status]}</Badge>
+                {redFlag
+                  ? <RedFlagBadge label="Contradiction" />
+                  : <Badge className={`status-${check.status}`}>{checkStatusLabels[check.status]}</Badge>}
                 <ChevronDown aria-hidden="true" className="check-chevron" />
               </summary>
               <div className="check-body">
-                <p>{check.message}</p>
+                <p>{redFlag ? plainContradiction(check, shortName(persona)) : check.message}</p>
                 <details className="evidence-toggle">
                   <summary>Pourquoi ce constat ? Voir les éléments vérifiés</summary>
                   <EvidenceCards

@@ -9,6 +9,7 @@ import {
   positionLabel,
 } from "../lib/presentation";
 import { Button, Card } from "../components/ui";
+import { RedFlagBadge } from "../components/RedFlag";
 
 interface PageContext {
   personas: Persona[];
@@ -22,6 +23,7 @@ const demoQuestions: Record<string, string> = {
   amira: "L’ajout de NVIDIA renforce-t-il une exposition déjà présente ?",
   mateo: "Les résultats financiers suffisent-ils à vérifier ses préférences ESG ?",
   robert: "Quel compromis un ajout de Tesla crée-t-il pour la préservation du capital ?",
+  alex: "Ses souhaits de risque et de protection du capital sont-ils compatibles ?",
 };
 
 function ProfileCard({
@@ -47,6 +49,9 @@ function ProfileCard({
         <span className={`risk-chip risk-${persona.risk_level}`}>{formatRisk(persona).replace(" déclaré", "")}</span>
       </header>
       <p className="persona-objective">{persona.objective}</p>
+      {persona.contradictions?.length ? (
+        <p className="red-flag-line"><RedFlagBadge label="Souhaits contradictoires" /></p>
+      ) : null}
       <div className="persona-chips">
         <span className="profile-chip"><Clock aria-hidden="true" />{horizon}</span>
         <span className="profile-chip"><Play aria-hidden="true" />{scenario.symbol} · {formatWeight(scenario.target_weight_pct)}</span>
@@ -130,6 +135,7 @@ export function OverviewPage(context: PageContext & { onNavigate: (page: string)
               <span className="quick-start-text">
                 <strong>{persona.name}</strong>
                 <span>{persona.objective}</span>
+                {persona.contradictions?.length ? <RedFlagBadge /> : null}
               </span>
               <ArrowRight aria-hidden="true" className="quick-start-arrow" />
             </button>

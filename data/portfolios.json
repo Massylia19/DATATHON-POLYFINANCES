@@ -90,6 +90,29 @@
           "weight_pct": 15
         }
       ]
+    },
+    {
+      "persona_id": "alex",
+      "is_demonstration_hypothesis": true,
+      "construction_note": "Portefeuille fictif de démonstration combinant une forte exposition technologique et crypto afin de rendre visibles les tensions entre les préférences déclarées et les objectifs de préservation du capital.",
+      "positions": [
+        {
+          "symbol": "SPY",
+          "weight_pct": 40
+        },
+        {
+          "symbol": "QQQ",
+          "weight_pct": 30
+        },
+        {
+          "symbol": "BTC-USD",
+          "weight_pct": 20
+        },
+        {
+          "symbol": "GLD",
+          "weight_pct": 10
+        }
+      ]
     }
   ]
 }

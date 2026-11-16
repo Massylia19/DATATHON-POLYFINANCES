@@ -1,6 +1,7 @@
 """Contrôles explicables reliant les résultats du moteur aux profils fictifs."""
 
 from __future__ import annotations
+from alphaforge.contradiction_checks import detect_profile_contradictions
 
 import json
 from datetime import date
@@ -263,5 +264,6 @@ def validate_profile(
                 },
             )
         )
+    findings.extend(detect_profile_contradictions(profile))
 
     return findings
