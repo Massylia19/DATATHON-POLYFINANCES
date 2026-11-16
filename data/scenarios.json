@@ -30,6 +30,15 @@
       "target_weight_pct": 5,
       "absent_from_initial_portfolio": true,
       "test_focus": "volatilité, perte maximale et conflit avec la préservation du capital"
+    },
+    {
+      "persona_id": "alex",
+      "scenario_id": "alex_add_nvda",
+      "description": "Ajouter un actif technologique afin de tester les tensions entre la recherche de rendements élevés, la limitation de la spéculation et la préservation du capital.",
+      "symbol": "NVDA",
+      "target_weight_pct": 10,
+      "absent_from_initial_portfolio": true,
+      "test_focus": "contradictions entre préférences, objectif de préservation du capital et exposition aux actifs volatils"
     }
   ]
 }

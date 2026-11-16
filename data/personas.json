@@ -54,6 +54,25 @@
         "liquidity_needs",
         "planned_withdrawals"
       ]
+    },
+    {
+      "id": "alex",
+      "name": "Alex (Démo - Profil contradictoire)",
+      "risk_level": "high",
+      "horizon_years_min": 15,
+      "horizon_years_max": null,
+      "objective": "Préservation du capital et croissance à long terme",
+      "preferences": [
+        "crypto",
+        "peu de spéculation",
+        "stabilité",
+        "rendements élevés"
+      ],
+      "missing_information": [
+        "loss_absorption_capacity",
+        "liquidity_needs",
+        "planned_withdrawals"
+      ]
     }
   ],
   "data_policy": "Aucun revenu ni aucune capacité financière ne sont inférés à partir de la profession."
