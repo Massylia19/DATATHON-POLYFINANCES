@@ -265,7 +265,7 @@ describe("parcours React AlphaForge", () => {
     fireEvent.click(screen.getByRole("button", { name: "Analyser le scénario" }));
     const saveButton = await screen.findByRole("button", { name: "Enregistrer sur cet appareil" });
     fireEvent.click(saveButton);
-    fireEvent.click(screen.getByRole("button", { name: "Mes scénarios" }));
+    fireEvent.click(screen.getByRole("button", { name: "Scénarios" }));
     expect(await screen.findByText(/Amira · NVIDIA/)).toBeInTheDocument();
     expect(screen.getByText(/dans le navigateur de cet appareil/i)).toBeInTheDocument();
     const savedItem = screen.getByText(/Amira · NVIDIA/).closest("article");

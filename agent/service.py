@@ -7,13 +7,20 @@ import json
 import math
 import os
 import re
+from importlib import import_module
 from copy import deepcopy
 from numbers import Real
 from pathlib import Path
 from typing import Any
 
-import boto3
-from botocore.config import Config
+try:
+    _boto3: Any = import_module("boto3")
+    _botocore_config: Any = import_module("botocore.config")
+except ModuleNotFoundError as exc:  # Le moteur local reste utilisable sans AWS.
+    if exc.name not in {"boto3", "botocore"}:
+        raise
+    _boto3 = None
+    _botocore_config = None
 
 from agent.context import RequestContext, create_request_context
 from agent.evidence import (
@@ -104,12 +111,16 @@ class ExplanationValidationError(ValueError):
 
 
 def _bedrock_client() -> Any:
-    config = Config(
+    if _boto3 is None or _botocore_config is None:
+        raise RuntimeError(
+            "boto3 n'est pas installé; l'explication AWS est indisponible."
+        )
+    config = _botocore_config.Config(
         connect_timeout=5,
         read_timeout=60,
         retries={"max_attempts": 3, "mode": "standard"},
     )
-    return boto3.client("bedrock-runtime", region_name=AWS_REGION, config=config)
+    return _boto3.client("bedrock-runtime", region_name=AWS_REGION, config=config)
 
 
 def _error_response(code: str, message: str) -> dict[str, Any]:
@@ -700,7 +711,249 @@ def analyze_request(
     max_converse_calls: int = MAX_CONVERSE_CALLS,
     max_tool_executions: int = MAX_TOOL_EXECUTIONS,
 ) -> dict[str, Any]:
-    """Analyse une demande avec Converse et les outils déterministes AlphaForge."""
+    """Analyse une demande d'ajout d'actif avec explication IA via AWS Bedrock Converse.
+
+    Cette fonction orchestre l'ensemble du flux d'analyse AlphaForge :
+    1. Validation des entrées et chargement du contexte (persona, portefeuille, données)
+    2. Simulation du portefeuille AVANT ajout (buy-and-hold historique)
+    3. Simulation du portefeuille APRÈS ajout avec le nouveau poids
+    4. Appel à AWS Bedrock pour générer une explication narrative intelligente
+    5. Retour d'une réponse structurée avec analyse + explication
+
+    C'est le point d'entrée principal d'AlphaForge pour les demandes utilisateur du type :
+    "Ajoute NVDA à 15% dans mon portefeuille et explique-moi pourquoi c'est bon/mauvais."
+
+    ARCHITECTURE (Multi-Agent avec AWS Bedrock) :
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 1. Validation & Contexte                                         │
+    │    - Chargement personas.json, portfolios.json, market data      │
+    │    - Création RequestContext (persona, actifs, métadonnées)      │
+    └──────────────────────────────────────────────────────────────────┘
+                                   ↓
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 2. Simulation Déterministe (alphaforge.engine)                   │
+    │    - Calcul portefeuille AVANT (métriques : rendement, vol, DD)  │
+    │    - Calcul portefeuille APRÈS (avec nouvel actif)               │
+    │    - Génération séries temporelles (évolution valeur)            │
+    └──────────────────────────────────────────────────────────────────┘
+                                   ↓
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 3. Génération Explication IA (AWS Bedrock Converse API)          │
+    │    - Système : Prompt d'instructions (SYSTEM_INSTRUCTIONS)       │
+    │    - Evidence : Catalogue de données injectées (métriques, prix) │
+    │    - Tools : 4 outils pour calculs supplémentaires si besoin     │
+    │    - Boucle : Jusqu'à MAX_CONVERSE_CALLS appels (8 par défaut)  │
+    │    - Modèle : claude-opus-5-5 (ou BEDROCK_MODEL_ID)              │
+    └──────────────────────────────────────────────────────────────────┘
+                                   ↓
+    ┌──────────────────────────────────────────────────────────────────┐
+    │ 4. Post-traitement & Validation                                  │
+    │    - Extraction du texte narratif depuis Bedrock                 │
+    │    - Validation : pas de contenu unsafe (NSFW, legal advice)     │
+    │    - Injection des références vers sources de données            │
+    │    - Création réponse finale structurée                          │
+    └──────────────────────────────────────────────────────────────────┘
+
+    SOURCES DE DONNÉES (même stack que analyze_custom_portfolio) :
+    - Prix historiques : data/market/prices_daily.csv (Yahoo Finance)
+    - Taux de change : data/market/fx_usdcad_daily.csv (Banque du Canada)
+    - Métadonnées actifs : data/market/assets_universe.csv
+    - Profils investisseurs : data/personas.json
+    - Portefeuilles : data/portfolios.json
+
+    SOURCES POUR L'EXPLICATION IA :
+    - AWS Bedrock Converse API : Génération du raisonnement narratif
+    - Modèle Claude Opus 5.5 : LLM pour interpréter les chiffres
+    - Evidence Catalog : Métriques injectées dans le prompt (contexte)
+    - Outils disponibles au modèle :
+      * compare_asset_metrics : Compare 2 actifs (rendement, vol, corrélation)
+      * analyze_diversification : Évalue la diversification (classes, secteurs)
+      * compute_correlation : Calcule corrélations entre actifs
+      * search_evidence : Cherche dans le catalogue d'evidence
+
+    HYPOTHÈSES CRITIQUES (Simulation) :
+    ⚠️ MÊMES QUE analyze_custom_portfolio :
+    - Buy-and-hold strict (pas de rééquilibrage)
+    - Historique ≠ futur (pas de prévision)
+    - Biais du survivant présent
+    - Intersection stricte des dates
+    - Coûts de transaction exclus
+    - Volatilité annualisée sqrt(252)
+
+    HYPOTHÈSES CRITIQUES (Explication IA) :
+    ⚠️ BEDROCK :
+    - AWS Bedrock disponible (région us-east-1 par défaut)
+    - Credentials AWS valides dans l'environnement
+    - Latence réseau acceptable (<5s par appel)
+    - Quota Bedrock suffisant (pas de throttling)
+    ⚠️ MODÈLE :
+    - Claude Opus suit les instructions du system prompt
+    - Le modèle ne génère pas de contenu financier illégal/dangereux
+    - Le modèle cite correctement les evidence_id fournis
+    - La réponse est en français (spécifié dans le prompt)
+    ⚠️ INTERPRÉTATION :
+    - L'explication reflète les données objectives (métriques)
+    - Le LLM peut faire des erreurs d'interprétation subtiles
+    - Les recommandations sont pédagogiques, PAS des conseils d'investissement
+
+    LIMITES (en plus de celles de la simulation) :
+    - **Dépendance AWS** : Si Bedrock indisponible, retour en mode dégradé
+      (métriques brutes sans explication narrative).
+    - **Coût** : Chaque appel consomme des tokens Bedrock (~1000-5000 input,
+      ~500-2000 output). Surveiller les quotas AWS.
+    - **Latence** : 2-10 secondes selon complexité (attente réseau + génération).
+    - **Non-déterminisme** : Temperature=0 mais le modèle peut varier légèrement
+      entre deux appels identiques (reformulations).
+    - **Langue** : Prompt en français mais modèle peut mélanger EN/FR si confused.
+    - **Sécurité** : Validation basique (has_unsafe_main_narrative) mais pas de
+      garantie absolue contre contenu inapproprié.
+    - **Outils limités** : Le modèle ne peut PAS accéder à des données temps-réel,
+      news, APIs externes. Seulement données historiques locales.
+
+    GESTION D'ERREURS & MODE DÉGRADÉ :
+    📉 Si AWS Bedrock échoue (credentials, quota, timeout, erreur réseau) :
+       → Retour en mode dégradé : {"status": "partial", "analysis": {...}, "warnings": [...]}
+       → L'utilisateur reçoit les métriques chiffrées SANS explication narrative.
+       → Voir _partial_response() pour la structure.
+
+    🔴 Si erreur critique (persona invalide, données corrompues, symbole inexistant) :
+       → Retour {"status": "error", "error": {"code": "...", "message": "..."}}
+       → Pas d'analyse produite.
+
+    VALIDATION DES ENTRÉES :
+    ✅ persona_id existe dans data/personas.json
+    ✅ symbol existe dans data/market/assets_universe.csv
+    ✅ target_weight_pct est fini, positif, <= 100%
+    ✅ Les credentials AWS sont valides (si Bedrock activé)
+    ❌ Pas de validation de la pertinence du choix d'actif (rôle du LLM)
+
+    CONSIDÉRATIONS ÉTHIQUES :
+    ⚠️ AVERTISSEMENT CRITIQUE :
+    Cette fonction génère une SIMULATION PÉDAGOGIQUE avec explication IA.
+    Ce n'est PAS un conseil en placement, NI une recommandation d'achat/vente.
+
+    - L'utilisateur doit consulter un conseiller financier qualifié avant décision.
+    - Le modèle IA peut faire des erreurs d'interprétation.
+    - Les données historiques ne garantissent rien sur le futur.
+    - Aucune vérification de l'adéquation au profil de risque réel de l'utilisateur.
+    - Pas de prise en compte : liquidité, fiscalité, légalité, situation personnelle.
+
+    L'interface doit afficher un disclaimer légal clair à l'utilisateur.
+
+    SÉCURITÉ AWS :
+    - Les credentials sont chargés depuis l'environnement (AWS_ACCESS_KEY_ID, etc.)
+      ou depuis ~/.aws/credentials (boto3 default).
+    - Aucune credential n'est loguée ou retournée dans la réponse.
+    - La région est AWS_REGION (défaut us-east-1).
+    - Timeout configuré : 30s connect, 90s read.
+    - Retry automatique : 3 tentatives avec backoff exponentiel (boto3 default).
+
+    PERFORMANCE :
+    - Latence typique : 3-8 secondes (simulation + Bedrock + post-processing).
+    - Goulot d'étranglement : Appels Bedrock (réseau + génération).
+    - Optimisations possibles :
+      * Cache des simulations (si même persona + même date).
+      * Parallélisation simulation AVANT/APRÈS (actuellement séquentiel).
+      * Réduction de l'evidence catalog (moins de tokens input).
+
+    OBSERVABILITÉ :
+    - Les logs incluent : model_id, nombre d'appels Bedrock, durée, erreurs AWS.
+    - Les warnings sont retournés dans la réponse (clé "warnings").
+    - Les erreurs AWS sont traduites en français via explain_aws_error().
+
+    Args:
+        persona_id: Identifiant du persona (ex: "amira", "mateo", "robert").
+            Doit exister dans data/personas.json.
+        symbol: Symbole de l'actif à ajouter (ex: "NVDA", "BTC-USD", "SHOP.TO").
+            Doit exister dans data/market/assets_universe.csv.
+        target_weight_pct: Poids cible pour le nouvel actif en pourcentage (ex: 15.0 pour 15%).
+            Doit être > 0 et <= 100. Les autres actifs sont rééquilibrés proportionnellement.
+        client: Client boto3 bedrock-runtime (optionnel). Si None, créé automatiquement.
+            Utile pour les tests avec mock clients.
+        root: Racine du projet (par défaut PROJECT_ROOT). Utile pour les tests.
+        model_id: ID du modèle Bedrock (ex: "us.anthropic.claude-opus-5-5").
+            Si None, utilise BEDROCK_MODEL_ID env ou DEFAULT_MODEL_ID.
+            Si "" (string vide), désactive Bedrock (mode dégradé forcé).
+        max_converse_calls: Nombre max d'appels Bedrock dans la boucle agent (défaut 8).
+            Limite pour éviter boucles infinies si le modèle redemande tools en boucle.
+        max_tool_executions: Nombre max d'exécutions d'outils (défaut 12).
+            Protège contre usage excessif de compute par le modèle.
+
+    Returns:
+        Dictionnaire avec l'une des structures suivantes :
+
+        **Succès complet (avec explication IA)** :
+        {
+            "status": "success",
+            "analysis": {
+                "before": {
+                    "weights_by_asset_pct": {...},
+                    "metrics": {"total_return": 0.45, "annualized_volatility": 0.15, ...}
+                },
+                "after": {...},
+                "delta_after_minus_before": {...},
+                "series": {"dates": [...], "before": [...], "after": [...]},
+                "period": {"start": "2021-11-12", "end": "2024-12-09", ...}
+            },
+            "explanation": {
+                "main_narrative": "... (texte généré par Bedrock) ...",
+                "references": [
+                    {"id": "...", "category": "metric", "unit": "%", "label": "Rendement total", ...}
+                ]
+            },
+            "warnings": []  # Vide si tout OK
+        }
+
+        **Succès partiel (mode dégradé, Bedrock indisponible)** :
+        {
+            "status": "partial",
+            "analysis": {...},  # Même structure que ci-dessus
+            "warnings": [
+                "Bedrock est désactivé explicitement; aucune explication n'a été produite.",
+                # ou "Erreur AWS : ThrottlingException - Request rate exceeded."
+            ]
+        }
+
+        **Erreur critique** :
+        {
+            "status": "error",
+            "error": {
+                "code": "UNKNOWN_SYMBOL",  # ou INVALID_PERSONA, INVALID_WEIGHT, INTERNAL_ERROR
+                "message": "Le symbole 'XYZ' n'existe pas dans l'univers d'actifs."
+            }
+        }
+
+    Raises:
+        Cette fonction ne lève jamais d'exception. Toutes les erreurs sont capturées
+        et retournées sous forme {"status": "error", ...} ou {"status": "partial", ...}.
+
+    Examples:
+        >>> # Ajout de NVDA avec explication
+        >>> result = analyze_request(
+        ...     persona_id="amira",
+        ...     symbol="NVDA",
+        ...     target_weight_pct=15.0
+        ... )
+        >>> if result["status"] == "success":
+        ...     print(result["explanation"]["main_narrative"])
+        ...     print(f"Rendement après: {result['analysis']['after']['metrics']['total_return']:.2%}")
+
+        >>> # Mode dégradé forcé (sans Bedrock)
+        >>> result = analyze_request(
+        ...     persona_id="mateo",
+        ...     symbol="BTC-USD",
+        ...     target_weight_pct=10.0,
+        ...     model_id=""  # Désactive Bedrock
+        ... )
+        >>> assert result["status"] == "partial"
+        >>> assert "warnings" in result
+
+    See Also:
+        - analyze_custom_portfolio() : Analyse multi-actifs SANS explication IA
+        - create_request_context() : Construction du contexte initial
+        - _converse_loop() : Boucle d'interaction avec Bedrock
+        - tests/test_explanation_robustness.py : Suite de tests (50+ cas AWS)
+    """
     try:
         context = create_request_context(
             persona_id, symbol, target_weight_pct, root=root
@@ -1324,6 +1577,267 @@ def answer_follow_up(
     }
 
 
+def analyze_custom_portfolio(
+    persona_id: str,
+    custom_weights: dict[str, float],
+    *,
+    root: Path = PROJECT_ROOT,
+) -> dict[str, Any]:
+    """Analyse un portefeuille personnalisé avec plusieurs modifications simultanées.
+
+    Cette fonction permet à l'utilisateur de modifier son portefeuille de manière flexible :
+    ajouter de nouveaux actifs, retirer des actifs existants, ou ajuster les pondérations.
+    Elle compare le portefeuille initial du persona avec le portefeuille personnalisé et
+    calcule l'impact sur les performances et les risques via une simulation historique.
+
+    ARCHITECTURE :
+    1. Validation des entrées (poids totalisent 100%, symboles existent)
+    2. Chargement du portefeuille initial depuis data/portfolios.json
+    3. Chargement des données de marché (prix, FX, métadonnées)
+    4. Conversion des prix en CAD et alignement sur dates communes
+    5. Simulation "buy-and-hold" pour les deux portefeuilles
+    6. Calcul des métriques (rendement, volatilité, drawdown)
+    7. Retour d'une structure comparative complète
+
+    SOURCES DE DONNÉES :
+    - Prix des actifs : Yahoo Finance (adj_close) via data/market/prices_daily.csv
+    - Taux de change : Banque du Canada via data/market/fx_usdcad_daily.csv
+    - Métadonnées : data/market/assets_universe.csv (classes, secteurs)
+    - Profils : data/personas.json (objectifs, tolérance au risque)
+    - Portefeuilles initiaux : data/portfolios.json
+
+    HYPOTHÈSES CRITIQUES :
+    - Stratégie buy-and-hold : Aucun rééquilibrage périodique. Les quantités
+      achetées restent fixes, les pondérations dérivent avec les performances.
+    - Période historique : Simulation reflète le passé (≠ prévision future).
+    - Univers survivant : Biais du survivant présent (actifs radiés absents).
+    - Intersection stricte : Seules les dates avec prix pour TOUS les actifs
+      sont retenues (élimine week-ends crypto, jours fériés différents).
+    - Coûts exclus : Frais de transaction, taxes, frais de gestion non modélisés.
+    - Volatilité : Calculée avec sqrt(252), approximatif (intervalles non uniformes).
+    - Drawdown : Mesuré sur observations retenues (peut omettre baisses intermédiaires).
+
+    LIMITES :
+    - Méthodologiques : Simulation historique ≠ prévision, buy-and-hold irréaliste,
+      coûts non modélisés, liquidité supposée parfaite.
+    - Des données : Biais du survivant, qualité Yahoo variable, FX reporté forward,
+      univers limité aux actifs actuels.
+    - D'interprétation : Corrélations passées peuvent changer, risques non capturés
+      (liquidité, contrepartie, réglementaire), événements imprévus.
+    - Cas non gérés : Vente à découvert (poids négatifs), effet de levier,
+      produits dérivés (options, futures).
+
+    VALIDATION :
+    ✅ Somme des poids = 100% (tolérance 1e-6)
+    ✅ Tous les symboles existent dans l'univers
+    ✅ Tous les poids sont finis et positifs (ou zéro pour retirer)
+    ✅ Le persona existe
+    ❌ Échec gracieux si données manquantes → retourne status: "error"
+
+    CONSIDÉRATIONS ÉTHIQUES :
+    ⚠️ Cette fonction produit une simulation pédagogique, PAS un conseil en placement.
+    L'utilisateur doit consulter un conseiller financier qualifié avant toute décision.
+    La fonction ne vérifie PAS la légalité des actifs, l'adéquation au profil réel,
+    les implications fiscales, ou les contraintes de liquidité.
+
+    Args:
+        persona_id: Identifiant du persona (doit exister dans data/personas.json).
+            Valeurs possibles : "amira", "mateo", "robert".
+        custom_weights: Dictionnaire {symbol: weight_pct} pour le nouveau portefeuille.
+            - Les symboles doivent exister dans data/market/assets_universe.csv
+            - Les poids doivent être >= 0 et totaliser 100% (tolérance 1e-6)
+            - Un poids de 0 retire l'actif
+            - Exemple : {"SPY": 50.0, "QQQ": 30.0, "NVDA": 20.0}
+        root: Racine du projet (par défaut : répertoire du projet).
+
+    Returns:
+        Dictionnaire avec la structure suivante :
+
+        En cas de succès (status="success") :
+        {
+            "status": "success",
+            "before": {
+                "weights_by_asset_pct": {...},
+                "metrics": {
+                    "total_return": 0.523,           # Rendement total (52.3%)
+                    "annualized_volatility": 0.18,  # Volatilité (18%)
+                    "max_drawdown": -0.25           # Baisse max (-25%)
+                }
+            },
+            "after": { ... },  # Même structure
+            "delta_after_minus_before": {
+                "metrics": { ... }  # Différences
+            },
+            "series": {
+                "dates": ["2021-11-12", ...],
+                "before": [100.0, 101.2, ...],  # Base 100
+                "after": [100.0, 102.5, ...]
+            },
+            ...
+        }
+
+        En cas d'erreur (status="error") :
+        {
+            "status": "error",
+            "error": {
+                "code": "INVALID_WEIGHTS",  # ou UNKNOWN_SYMBOL, INVALID_PERSONA
+                "message": "Les poids doivent totaliser 100%, reçu 95.00%"
+            }
+        }
+
+    Raises:
+        Cette fonction ne lève pas d'exception. Toutes les erreurs sont retournées
+        dans {"status": "error", "error": {...}}.
+
+    Examples:
+        >>> # Ajouter NVDA et rééquilibrer
+        >>> result = analyze_custom_portfolio(
+        ...     persona_id="amira",
+        ...     custom_weights={
+        ...         "SPY": 30.0,
+        ...         "QQQ": 25.0,
+        ...         "SHOP.TO": 15.0,
+        ...         "BTC-USD": 10.0,
+        ...         "NVDA": 20.0,  # Nouveau
+        ...     }
+        ... )
+        >>> if result["status"] == "success":
+        ...     print(f"Rendement après: {result['after']['metrics']['total_return']:.2%}")
+
+    See Also:
+        - analyze_request() : Analyse avec un seul ajout + explication Bedrock
+        - tests/test_custom_portfolio.py : Suite de tests (40+ cas)
+    """
+    from alphaforge.engine import (
+        load_persona_and_portfolio,
+        load_asset_universe,
+        load_fx_usdcad,
+        load_prices_in_cad,
+        align_on_common_dates,
+        simulate_buy_and_hold,
+        calculate_metrics,
+        aggregate_weights_by_class,
+        load_sources,
+        team_sources,
+        _weight_map,
+    )
+
+    try:
+        # Charger les données du persona et du portefeuille initial
+        persona, initial_portfolio = load_persona_and_portfolio(root / "data", persona_id)
+
+        # Valider que les poids totalisent 100%
+        total_weight = sum(custom_weights.values())
+        if not math.isclose(total_weight, 100.0, abs_tol=1e-6):
+            return _error_response(
+                "INVALID_WEIGHTS",
+                f"Les poids doivent totaliser 100%, reçu {total_weight:.2f}%"
+            )
+
+        # Valider que tous les symboles existent
+        assets = load_asset_universe(root / "data" / "market" / "assets_universe.csv")
+        for symbol in custom_weights:
+            if symbol not in assets:
+                return _error_response(
+                    "UNKNOWN_SYMBOL",
+                    f"Symbole inconnu: {symbol}"
+                )
+
+        # Créer le portefeuille modifié
+        modified_portfolio = {
+            "persona_id": persona_id,
+            "positions": [
+                {"symbol": symbol, "weight_pct": weight}
+                for symbol, weight in custom_weights.items()
+            ]
+        }
+
+        # Obtenir les poids des deux portefeuilles
+        before_weights = _weight_map(initial_portfolio)
+        after_weights = custom_weights
+        all_symbols = sorted(set(before_weights) | set(after_weights))
+
+        # Charger les données de marché
+        dataset_dir = root / "data" / "market"
+        fx_dates, fx_rates = load_fx_usdcad(dataset_dir / "fx_usdcad_daily.csv")
+        raw_series = load_prices_in_cad(
+            dataset_dir / "prices_daily.csv",
+            all_symbols,
+            assets,
+            fx_dates,
+            fx_rates,
+        )
+        dates, prices = align_on_common_dates(raw_series)
+
+        # Simuler les deux portefeuilles
+        before_values = simulate_buy_and_hold(before_weights, prices)
+        after_values = simulate_buy_and_hold(after_weights, prices)
+        before_metrics = calculate_metrics(before_values)
+        after_metrics = calculate_metrics(after_values)
+
+        # Calculer les deltas
+        def _rounded(value: float) -> float:
+            if abs(value) < 1e-6:
+                return 0.0
+            return round(value, 6)
+
+        metric_deltas = {
+            metric: _rounded(after_metrics[metric] - before_metrics[metric])
+            for metric in before_metrics
+        }
+
+        return {
+            "status": "success",
+            "analysis_type": "custom_portfolio_comparison",
+            "persona": deepcopy(persona),
+            "scenario": {
+                "scenario_id": f"{persona_id}_custom_portfolio",
+                "description": "Portefeuille personnalisé avec modifications multiples",
+                "modification_type": "custom_weights",
+            },
+            "period": {
+                "start": dates[0].isoformat(),
+                "end": dates[-1].isoformat(),
+                "common_observations": len(dates),
+            },
+            "currency": "CAD",
+            "methodology": {
+                "price_field": "adj_close",
+                "fx_conversion": "Prix USD multiplié par USD/CAD (CAD pour 1 USD); dernier taux connu reporté si absent.",
+                "calendar_alignment": "Intersection stricte des dates ayant un prix pour tous les actifs avant et après.",
+                "simulation": "Achat aux pondérations initiales, quantités fixes, distributions reflétées par adj_close, aucun rééquilibrage périodique.",
+                "volatility": "Écart-type échantillonnal des rendements entre observations communes, annualisé avec sqrt(252).",
+                "series_base": "Les courbes valent 100 à la première date commune et représentent la valeur du portefeuille simulé.",
+            },
+            "series": {
+                "dates": [current_date.isoformat() for current_date in dates],
+                "before": [value * 100.0 for value in before_values],
+                "after": [value * 100.0 for value in after_values],
+            },
+            "before": {
+                "weights_by_asset_pct": before_weights,
+                "weights_by_class_pct": aggregate_weights_by_class(before_weights, assets),
+                "metrics": {key: _rounded(value) for key, value in before_metrics.items()},
+            },
+            "after": {
+                "weights_by_asset_pct": after_weights,
+                "weights_by_class_pct": aggregate_weights_by_class(after_weights, assets),
+                "metrics": {key: _rounded(value) for key, value in after_metrics.items()},
+            },
+            "delta_after_minus_before": {
+                "metrics": metric_deltas,
+                "weights_by_asset_pct": {
+                    symbol: _rounded(after_weights.get(symbol, 0.0) - before_weights.get(symbol, 0.0))
+                    for symbol in all_symbols
+                },
+            },
+            "sources": load_sources(dataset_dir / "sources_metadata.csv") + team_sources(),
+        }
+
+    except EngineError as exc:
+        return _error_response(exc.code, exc.message)
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        return _error_response("INTERNAL_ERROR", str(exc))
 def chat_with_persona(
     question: str,
     persona: dict[str, Any],

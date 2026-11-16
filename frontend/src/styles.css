@@ -334,7 +334,6 @@ input[type="range"] { min-height: 30px; padding: 4px 0; border: 0; accent-color:
 .result-links button { padding: 8px 11px; font-size: 13px; }
 .result-summary .technical-details { margin-top: 8px; padding: 8px 11px; font-size: 13px; }
 
-.overview { max-width: 1100px; }
 .overview-hero { max-width: none; padding: 26px 28px; }
 .overview-hero h1 { max-width: 720px; }
 .overview-hero > p { max-width: 640px; color: var(--muted); }
@@ -351,8 +350,8 @@ input[type="range"] { min-height: 30px; padding: 4px 0; border: 0; accent-color:
 .quick-start-text span { overflow: hidden; color: var(--muted); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
 .quick-start-arrow { width: 18px; height: 18px; flex-shrink: 0; color: var(--muted); }
 .quick-start-item:hover .quick-start-arrow { color: var(--accent); }
-.how-it-works { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.how-step { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; background: color-mix(in srgb, var(--surface-2) 80%, transparent); color: var(--text); text-align: left; cursor: pointer; }
+.how-it-works { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
+.how-step { display: flex; align-items: center; gap: 12px; min-height: 100%; padding: 12px 14px; border: 0; border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; background: color-mix(in srgb, var(--surface-2) 80%, transparent); color: var(--text); text-align: left; cursor: pointer; }
 .how-step:hover { background: var(--surface); }
 .how-step > span:last-child { display: grid; gap: 1px; }
 .how-step strong { font-size: var(--fs-base); }

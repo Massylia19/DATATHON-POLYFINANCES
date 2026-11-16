@@ -23,6 +23,9 @@ export type FollowUpResponse = { status: "success"; answer: string; evidence_ref
 export interface PublicEvidence { label: string; value: string; source?: string; role?: string; date?: string; url?: string; limitation?: string; }
 export interface EvidenceResponse { analysis_id: string; evidence: PublicEvidence[]; }
 export interface SavedScenario { id: string; saved_at: string; request: ScenarioRequest; }
+export interface CustomPortfolioRequest { persona_id: PersonaId; weights: Record<string, number>; }
+export interface CustomPortfolioAnalysis { analysis_type: string; persona: Persona; scenario: { scenario_id: string; description: string; modification_type: string }; period: { start: string; end: string; common_observations: number }; currency: string; before: PortfolioResult; after: PortfolioResult; delta_after_minus_before: { metrics: Metrics; weights_by_asset_pct: Record<string, number> }; series: { dates: string[]; before: number[]; after: number[] }; methodology: Record<string, unknown>; sources: Array<Record<string, unknown>>; }
+export type CustomPortfolioResponse = { status: "success"; } & CustomPortfolioAnalysis | { status: "error"; error: ApiError };
 export interface ChatMessage { role: "user" | "assistant"; content: string; }
 export interface ChatRequest { persona_id: PersonaId; question: string; analysis_id: string | null; history: ChatMessage[]; }
 export interface ChatResponse { status: "success"; answer: string; persona_id: PersonaId; analysis_id: string | null; }

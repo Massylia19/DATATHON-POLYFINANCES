@@ -1,11 +1,11 @@
-import { BookOpen, Bookmark, ChevronRight, FlaskConical, Home, Menu, Moon, ShieldCheck, Sun, Users, X } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { ChevronRight, Menu, Moon, Sun, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./lib/api";
 import { scenarioKey } from "./lib/format";
 import type {
   AnalysisResponse,
   Bootstrap,
+  CustomPortfolioResponse,
   InterpretResponse,
   Persona,
   SavedScenario,
@@ -24,23 +24,27 @@ import {
   ProfilesPage,
   SavedScenariosPage,
 } from "./features/pages";
+import { PortfolioEditor } from "./features/PortfolioEditor";
+import { CustomPortfolioResults } from "./features/CustomPortfolioResults";
 
 type PageId =
   | "overview"
   | "profiles"
   | "simulation"
+  | "portfolio-editor"
   | "coherence"
   | "scenarios"
   | "sources";
 
 const STORAGE_KEY = "alphaforge.scenarios.v1";
-const NAV_ITEMS: Array<{ id: PageId; label: string; icon: LucideIcon; needsResult?: boolean }> = [
-  { id: "overview", label: "Vue d’ensemble", icon: Home },
-  { id: "profiles", label: "Profils fictifs", icon: Users },
-  { id: "simulation", label: "Simuler un ajout", icon: FlaskConical },
-  { id: "coherence", label: "Cohérence", icon: ShieldCheck, needsResult: true },
-  { id: "scenarios", label: "Mes scénarios", icon: Bookmark },
-  { id: "sources", label: "Sources et méthode", icon: BookOpen },
+const NAV_ITEMS: Array<{ id: PageId; label: string }> = [
+  { id: "overview", label: "Vue d’ensemble" },
+  { id: "profiles", label: "Profils fictifs" },
+  { id: "simulation", label: "Simuler un ajout" },
+  { id: "portfolio-editor", label: "Éditeur de portefeuille" },
+  { id: "coherence", label: "Cohérence du scénario" },
+  { id: "scenarios", label: "Scénarios" },
+  { id: "sources", label: "Sources et méthode" },
 ];
 
 function isPageId(value: string): value is PageId {
@@ -88,6 +92,7 @@ function App() {
   const [data, setData] = useState<Bootstrap | null>(null);
   const [draft, setDraft] = useState<ScenarioRequest | null>(null);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
+  const [customPortfolioResult, setCustomPortfolioResult] = useState<CustomPortfolioResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [formValid, setFormValid] = useState(true);
   const [error, setError] = useState("");
@@ -409,27 +414,17 @@ function App() {
       <div className="app-frame">
         <aside className={`sidebar ${mobileNavOpen ? "open" : ""}`}>
           <nav aria-label="Navigation principale">
-            {NAV_ITEMS.map(item => {
-              const Icon = item.icon;
-              const waiting = item.needsResult && scenarioStatus !== "done";
-              return (
-                <button
-                  type="button"
-                  key={item.id}
-                  className={[page === item.id ? "active" : "", waiting ? "waiting" : ""].join(" ").trim()}
-                  aria-current={page === item.id ? "page" : undefined}
-                  aria-describedby={waiting ? "nav-needs-result" : undefined}
-                  onClick={() => navigate(item.id)}
-                >
-                  <Icon aria-hidden="true" className="nav-icon" />
-                  <span className="nav-label">{item.label}</span>
-                  {item.needsResult && (
-                    <span className={`nav-dot dot-${scenarioStatus}`} aria-hidden="true" />
-                  )}
-                </button>
-              );
-            })}
-            <span id="nav-needs-result" className="sr-only">Disponible après une analyse à jour.</span>
+            {NAV_ITEMS.map(item => (
+              <button
+                type="button"
+                key={item.id}
+                className={page === item.id ? "active" : ""}
+                aria-current={page === item.id ? "page" : undefined}
+                onClick={() => navigate(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
           </nav>
           <button
             type="button"
@@ -498,6 +493,27 @@ function App() {
                   comparison={<ComparisonPage draft={draft} personaName={persona.name} invalid={!formValid} assets={data.assets} />}
                 />
               </div>
+            </div>
+          )}
+          {page === "portfolio-editor" && data && (
+            <div className="portfolio-editor-layout">
+              {!customPortfolioResult || customPortfolioResult.status === "error" ? (
+                <PortfolioEditor
+                  data={data}
+                  onResult={result => {
+                    setCustomPortfolioResult(result);
+                    if (result.status === "success") {
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }
+                  }}
+                />
+              ) : (
+                <CustomPortfolioResults
+                  result={customPortfolioResult}
+                  assets={data.assets}
+                  onNewAnalysis={() => setCustomPortfolioResult(null)}
+                />
+              )}
             </div>
           )}
           {page === "coherence" && (

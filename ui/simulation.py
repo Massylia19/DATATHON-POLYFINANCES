@@ -220,7 +220,7 @@ with weight_col:
         on_change=on_weight_change,
     )
 with action_col:
-    submitted = st.button("Analyser le scénario", type="primary", use_container_width=True)
+    submitted = st.button("Analyser le scénario", type="primary", width='stretch')
 
 st.session_state["selected_symbol"] = selected_symbol
 st.session_state["target_weight"] = float(target_weight)

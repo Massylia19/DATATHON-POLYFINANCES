@@ -19,6 +19,8 @@ L'interface permet aussi de tester n'importe quel actif du jeu de données, à n
 
 ### Architecture
 
+AlphaForge utilise une architecture multi-couches avec séparation claire entre calcul déterministe (Python) et explication narrative (AWS Bedrock / Claude). Le **code calcule**, le **modèle explique et confronte les conclusions aux preuves**. Aucun chiffre n'est produit par le modèle de langage.
+
 ```text
 Interface React / TypeScript (frontend/)
    │  profil, actif, poids
@@ -26,12 +28,11 @@ Interface React / TypeScript (frontend/)
 API FastAPI (api/)
    │                     ├─► moteur de simulation            (alphaforge/engine.py)
    │                     ├─► contrôles du profil              (alphaforge/profile_checks.py)
+   │                     ├─► vérification des contradictions  (alphaforge/contradiction_checks.py)
    │                     └─► explication et contre-analyse IA (Bedrock)
    ▼
 Résultat structuré : métriques, contrôles, preuves et limites
 ```
-
-Le **code calcule**, le **modèle explique et confronte les conclusions aux preuves**. Aucun chiffre n'est produit par le modèle de langage.
 
 ---
 
@@ -299,16 +300,25 @@ L'interface est une application **React + TypeScript** (dossier `frontend/`), co
 
 ### Lancer l'application
 
-Prérequis : Python 3.12+, Node.js 20+ et npm. Il faut **deux terminaux**.
+**Prérequis** : Python 3.12+, Node.js 20+ et npm. Il faut **deux terminaux**.
 
-**Terminal 1 — l'API**
+#### Terminal 1 — l'API
 
+**macOS / Linux**
 ```bash
 pip install -e .
+export BEDROCK_MODEL_ID="us.anthropic.claude-opus-5-5"  # Optionnel
 python -m uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-**Terminal 2 — l'interface**
+**Windows (PowerShell)**
+```powershell
+pip install -e .
+$env:BEDROCK_MODEL_ID = "us.anthropic.claude-opus-5-5"  # Optionnel
+py -3.12 -m uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+#### Terminal 2 — l'interface
 
 ```bash
 cd frontend
@@ -316,11 +326,11 @@ npm install
 npm run dev
 ```
 
-Ouvrir ensuite <http://localhost:5173>.
+**Ouvrir l'application** : <http://localhost:5173>
 
-- Sous Windows, remplacer `python` par `py -3.12`.
-- Pour utiliser une API à une autre adresse, définir `VITE_API_URL` avant `npm run dev`.
-- **Sans AWS** : lancer l'API avec `BEDROCK_MODEL_ID=""` (PowerShell : `$env:BEDROCK_MODEL_ID = ""`). Les chiffres et les contrôles restent disponibles. L'interface indique que l'explication IA est indisponible.
+**Notes :**
+- Vite relaie automatiquement `/api` vers `http://127.0.0.1:8000`. Pour une API différente, définir `VITE_API_URL` avant `npm run dev`.
+- **Mode sans AWS** : lancer l'API avec `BEDROCK_MODEL_ID=""` (PowerShell : `$env:BEDROCK_MODEL_ID = ""`). Les chiffres et les contrôles restent disponibles. L'interface indique que l'explication IA est indisponible.
 
 ### Ce qu'on trouve dans l'application
 
@@ -344,6 +354,7 @@ Ouvrir ensuite <http://localhost:5173>.
 - Si on change le scénario pendant un calcul, l'ancienne réponse est ignorée.
 - Les scénarios enregistrés restent dans le navigateur (`localStorage`). On garde les paramètres, pas les résultats.
 - L'API garde les réponses en mémoire pendant une heure (100 au maximum) pour les questions de suivi. Tout est perdu au redémarrage : c'est fait pour une démo locale.
+- Les questions de l'assistant sont indépendantes et liées à une analyse précise ; aucun historique de chat n'est transmis.
 
 ### Vérifier l'interface
 
@@ -376,12 +387,13 @@ npm run build       # version de production
 ```text
 DATATHON-POLYFINANCES/
 ├── alphaforge/
-│   ├── engine.py            Moteur de simulation            (Personne 1)
-│   ├── profile_checks.py    Contrôles du profil et ESG      (Personne 4)
+│   ├── engine.py            Moteur de simulation
+│   ├── profile_checks.py    Contrôles du profil et ESG
 │   └── contradiction_checks.py  Drapeau rouge : contradictions du profil
 ├── api/                     API FastAPI
 ├── frontend/                Interface React / TypeScript
-├── scripts/                 Diagnostic AWS Bedrock          (Personne 2)
+├── agent/                   Service d'orchestration et AWS Bedrock
+├── scripts/                 Diagnostic AWS Bedrock
 ├── run_comparison.py        Commande de simulation
 ├── data/
 │   ├── market/              Jeu de départ AlphaForge (prix, change, univers, sources)

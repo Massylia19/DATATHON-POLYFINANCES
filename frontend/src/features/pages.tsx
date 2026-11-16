@@ -196,6 +196,9 @@ export function SavedScenariosPage({
 }) {
   return (
     <Card className="saved-page">
+      <p className="eyebrow">Sauvegardés sur cet appareil</p>
+      <h1>Scénarios</h1>
+      <p>Les scénarios sont conservés dans le navigateur de cet appareil, pas dans un compte ni sur le serveur.</p>
       {saved.length === 0 ? (
         <div className="empty saved-empty">
           <Bookmark aria-hidden="true" className="empty-icon" />
