@@ -2,6 +2,8 @@
 
 > **Si je consacre X % de mon portefeuille à cet actif, qu'est-ce qui change et quels compromis dois-je comprendre compte tenu de mon profil ?**
 
+> 🌐 **Application en ligne : <https://dnljlar20i0ps.cloudfront.net>**
+
 AlphaForge AI est une application pédagogique de simulation. Elle compare un portefeuille fictif **avant** et **après** l'ajout d'un actif, sur des données historiques réelles, puis examine la cohérence du changement avec le profil et explique les compromis.
 
 > ⚠️ **Avertissement.** Il s'agit d'une comparaison historique hypothétique à but pédagogique. Ce n'est ni une prévision, ni une recommandation, ni un conseil en placement. Les personas et les portefeuilles sont fictifs.
@@ -331,6 +333,31 @@ npm run dev
 **Notes :**
 - Vite relaie automatiquement `/api` vers `http://127.0.0.1:8000`. Pour une API différente, définir `VITE_API_URL` avant `npm run dev`.
 - **Mode sans AWS** : lancer l'API avec `BEDROCK_MODEL_ID=""` (PowerShell : `$env:BEDROCK_MODEL_ID = ""`). Les chiffres et les contrôles restent disponibles. L'interface indique que l'explication IA est indisponible.
+
+### Version en ligne (déploiement AWS)
+
+L'application est publique ici : **<https://dnljlar20i0ps.cloudfront.net>**
+
+```text
+Navigateur ──HTTPS──▶ CloudFront (dnljlar20i0ps.cloudfront.net)
+                        ├── /*      → S3 alphaforge-frontend-014498642951 (build React, accès privé via OAC)
+                        └── /api/*  → ECS Express « alphaforge-api » (FastAPI + Bedrock, rôle IAM alphaforge-ecs-task-role)
+```
+
+- Le frontend et l'API partagent le même domaine. Le frontend est donc construit **sans** `VITE_API_URL` et appelle `/api` en relatif. Il n'y a pas de CORS à configurer.
+- L'API utilise le rôle IAM de la tâche ECS. Aucune clé AWS ne se trouve dans le navigateur, le dépôt ou l'image.
+- Limite : CloudFront coupe les requêtes au bout de **60 s**. Une comparaison complète de trois scénarios peut dépasser ce délai. Une analyse simple prend environ 35 s.
+
+Republier le frontend après une modification :
+
+```bash
+cd frontend
+npm ci && npm run build
+aws s3 sync dist s3://alphaforge-frontend-014498642951 --delete
+aws cloudfront create-invalidation --distribution-id E1GDMWAK8WJOMS --paths "/*"
+```
+
+Republier l'API : pousser une nouvelle image dans ECR (`alphaforge-api`), puis mettre à jour le service ECS Express `alphaforge-api` (cluster `default`, `us-east-1`). Pour les étapes détaillées, voir [docs/deployment_aws.md](docs/deployment_aws.md).
 
 ### Ce qu'on trouve dans l'application
 
