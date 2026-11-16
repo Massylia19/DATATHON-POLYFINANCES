@@ -18,19 +18,248 @@ L'interface permet aussi de tester n'importe quel actif du jeu de données, à n
 
 ### Architecture
 
+AlphaForge utilise une architecture multi-couches avec séparation claire entre calcul déterministe (Python) et explication narrative (AWS Bedrock / Claude). Le **code calcule**, le **modèle explique**. Aucun chiffre n'est produit par le modèle de langage.
+
+#### Vue d'ensemble simplifiée
+
 ```text
-Interface React / TypeScript (frontend/)
-   │  profil, actif, poids
-   ▼
-API FastAPI (api/)
-   │                     ├─► moteur de simulation            (alphaforge/engine.py)
-   │                     ├─► contrôles du profil              (alphaforge/profile_checks.py)
-   │                     └─► explication facultative (Bedrock)
-   ▼
-Résultat structuré : métriques, contrôles, preuves et limites
+┌──────────────────────────────────────────────────────────────────────────┐
+│  FRONTEND (React + TypeScript)                                           │
+│  • Interface utilisateur (profil, actifs, poids)                         │
+│  • Visualisations (graphiques, métriques)                                │
+│  • Port 5173 (Vite dev server)                                           │
+└──────────────────────────────────────────────────────────────────────────┘
+                              ↓ HTTP POST
+┌──────────────────────────────────────────────────────────────────────────┐
+│  API (FastAPI)                                                           │
+│  • Validation des entrées (Pydantic)                                     │
+│  • Endpoints REST (/api/custom-portfolio, /api/interpret)                │
+│  • Port 8000                                                             │
+└──────────────────────────────────────────────────────────────────────────┘
+                              ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│  BACKEND LOGIC (agent/service.py)                                        │
+│  • Orchestration de l'analyse                                            │
+│  • Appels au moteur de simulation                                        │
+│  • Appels à AWS Bedrock (optionnel)                                      │
+└──────────────────────────────────────────────────────────────────────────┘
+                    ↓                              ↓
+    ┌───────────────────────────┐    ┌───────────────────────────┐
+    │  MOTEUR DE SIMULATION     │    │  AWS BEDROCK CONVERSE API │
+    │  (alphaforge/engine.py)   │    │  • Claude Opus 5.5        │
+    │  • Calculs déterministes  │    │  • Région us-east-1       │
+    │  • Métriques financières  │    │  • Explication narrative  │
+    │  • Données historiques    │    │  • Tools : 4 outils       │
+    └───────────────────────────┘    └───────────────────────────┘
+                    ↓
+    ┌───────────────────────────────────────────────────────────┐
+    │  DONNÉES LOCALES                                          │
+    │  • data/personas.json (profils investisseurs)             │
+    │  • data/portfolios.json (allocations)                     │
+    │  • data/market/prices_daily.csv (Yahoo Finance)           │
+    │  • data/market/fx_usdcad_daily.csv (Banque du Canada)     │
+    │  • data/market/assets_universe.csv (métadonnées)          │
+    └───────────────────────────────────────────────────────────┘
 ```
 
-Le **code calcule**, le **modèle explique**. Aucun chiffre n'est produit par le modèle de langage. Streamlit demeure disponible comme interface historique; le parcours principal est l'application React.
+#### Architecture détaillée : Flux de données end-to-end
+
+**Cas d'usage 1 : Modification de portefeuille (sans explication IA)**
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ 1. FRONTEND (React) : PortfolioEditor.tsx                                           │
+│    Utilisateur modifie poids, ajoute/retire actifs                                  │
+│    → Normalisation automatique à 100%                                               │
+│    → Clic "Analyser ce portefeuille"                                                │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+                                    ↓ POST /api/custom-portfolio
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ 2. API (FastAPI) : api/main.py::create_custom_portfolio_analysis()                 │
+│    Validation : CustomPortfolioRequest (Pydantic)                                   │
+│    • persona_id : "amira" | "mateo" | "robert"                                      │
+│    • weights : dict[symbol → weight_pct]  (total = 100%)                            │
+│    → Appelle api/services.py::run_custom_portfolio()                                │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ 3. BACKEND : agent/service.py::analyze_custom_portfolio()                          │
+│    a) Chargement contexte :                                                         │
+│       • Lit data/personas.json → charge profil utilisateur                          │
+│       • Lit data/portfolios.json → charge portefeuille initial                      │
+│       • Lit data/market/prices_daily.csv → prix historiques (Yahoo Finance)         │
+│       • Lit data/market/fx_usdcad_daily.csv → taux USD/CAD (Banque du Canada)      │
+│       • Lit data/market/assets_universe.csv → métadonnées (classes, secteurs)      │
+│    b) Simulation AVANT (alphaforge/engine.py) :                                     │
+│       • Normalise portefeuille initial                                              │
+│       • Convertit prix en CAD (FX forward fill)                                     │
+│       • Aligne sur dates communes (intersection stricte)                            │
+│       • Simule buy-and-hold (quantités fixes)                                       │
+│       • Calcule métriques : rendement, volatilité, max drawdown                     │
+│    c) Simulation APRÈS :                                                            │
+│       • Applique custom_weights (portefeuille personnalisé)                         │
+│       • Même processus que AVANT                                                    │
+│    d) Calcul des deltas :                                                           │
+│       • delta = after - before (différences)                                        │
+│    e) Génération séries temporelles :                                               │
+│       • Base 100 au départ, évolution relative                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+                                    ↓ JSON Response
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ 4. API → FRONTEND : Réponse structurée                                              │
+│    {                                                                                 │
+│      "status": "success",                                                            │
+│      "before": { "weights_by_asset_pct": {...}, "metrics": {...} },                │
+│      "after": { ... },                                                               │
+│      "delta_after_minus_before": { ... },                                           │
+│      "series": { "dates": [...], "before": [...], "after": [...] },                │
+│      "period": { "start": "...", "end": "...", "common_observations": 756 }        │
+│    }                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ 5. FRONTEND (React) : CustomPortfolioResults.tsx                                    │
+│    Affichage des résultats :                                                        │
+│    • 3 cartes métriques (Rendement, Volatilité, Baisse max) avec deltas            │
+│    • Graphique ligne SVG (AVANT vs APRÈS, base 100)                                 │
+│    • Tableaux de composition détaillée (poids par actif)                            │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Cas d'usage 2 : Ajout d'actif avec explication IA (AWS Bedrock)**
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ 1. FRONTEND (React) : SimulationForm.tsx                                            │
+│    Utilisateur sélectionne : persona + actif à ajouter + poids                      │
+│    → Clic "Analyser"                                                                │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+                                    ↓ POST /api/interpret
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ 2. API (FastAPI) : api/main.py::interpret_request()                                │
+│    Validation : InterpretRequest (Pydantic)                                         │
+│    → Appelle api/services.py::run_interpret()                                       │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ 3. BACKEND : agent/service.py::analyze_request()                                   │
+│    a) Chargement contexte (même que cas 1)                                          │
+│    b) Simulation AVANT + APRÈS (même que cas 1)                                     │
+│    c) ⭐ NOUVEAU : Génération explication IA via AWS Bedrock                        │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ 4. AWS BEDROCK CONVERSE API (agent/service.py::_converse_loop)                     │
+│    ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│    │ a) Création client boto3 :                                                   │ │
+│    │    • boto3.client('bedrock-runtime', region_name='us-east-1')               │ │
+│    │    • Credentials AWS depuis environnement ou ~/.aws/credentials             │ │
+│    │    • Timeout : 30s connect, 90s read                                        │ │
+│    │    • Retry : 3 tentatives avec backoff exponentiel                          │ │
+│    └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                 ↓                                                    │
+│    ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│    │ b) Construction du prompt :                                                  │ │
+│    │    • System Instructions (SYSTEM_INSTRUCTIONS) : prompt de rôle             │ │
+│    │    • Evidence Catalog : métriques injectées (avant/après, deltas)           │ │
+│    │    • User Message : "Explique les compromis pour [persona] si ajoute        │ │
+│    │                      [actif] à [poids]%"                                     │ │
+│    │    • Tools : 4 outils disponibles au modèle :                               │ │
+│    │      * compare_asset_metrics (compare 2 actifs)                             │ │
+│    │      * analyze_diversification (évalue classes, secteurs)                   │ │
+│    │      * compute_correlation (calcule corrélations)                           │ │
+│    │      * search_evidence (cherche dans catalog)                               │ │
+│    └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                 ↓                                                    │
+│    ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│    │ c) Boucle Converse (max 8 appels) :                                         │ │
+│    │    1. Appel bedrock.converse() :                                            │ │
+│    │       • model_id = "us.anthropic.claude-opus-5-5" (ou BEDROCK_MODEL_ID)    │ │
+│    │       • system = [{"text": SYSTEM_INSTRUCTIONS}]                            │ │
+│    │       • messages = [{"role": "user", "content": [{"text": "..."}]}]        │ │
+│    │       • toolConfig = {"tools": TOOL_SPECS}                                  │ │
+│    │       • inferenceConfig = {"maxTokens": 2048, "temperature": 0}            │ │
+│    │                                                                              │ │
+│    │    2. Traitement réponse Bedrock :                                          │ │
+│    │       • Si stopReason = "end_turn" : Fini, extraire texte                  │ │
+│    │       • Si stopReason = "tool_use" :                                        │ │
+│    │         → Exécuter tool via dispatch_tool() (Python local)                 │ │
+│    │         → Injecter résultat tool dans next message                         │ │
+│    │         → Re-appeler bedrock.converse() (boucle)                           │ │
+│    │                                                                              │ │
+│    │    3. Extraction narrative :                                                │ │
+│    │       • Cherche dernier message avec role="assistant"                       │ │
+│    │       • Extrait texte narratif (main_narrative)                             │ │
+│    │       • Validation : has_unsafe_main_narrative() (NSFW, legal advice)      │ │
+│    └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                 ↓                                                    │
+│    ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│    │ d) Gestion d'erreurs AWS :                                                   │ │
+│    │    • ThrottlingException : Quota dépassé → Mode dégradé                     │ │
+│    │    • ModelTimeoutException : Timeout → Mode dégradé                         │ │
+│    │    • ValidationException : Prompt invalide → Mode dégradé                   │ │
+│    │    • ServiceUnavailableException : AWS down → Mode dégradé                  │ │
+│    │    → Retour {"status": "partial", "warnings": ["Erreur AWS: ..."]}         │ │
+│    └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+                                    ↓ JSON Response
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ 5. API → FRONTEND : Réponse avec explication                                        │
+│    {                                                                                 │
+│      "status": "success",                                                            │
+│      "analysis": { ... },  // Métriques (comme cas 1)                               │
+│      "explanation": {                                                                │
+│        "main_narrative": "... (texte généré par Claude Opus 5.5) ...",             │
+│        "references": [                                                               │
+│          {"id": "ev_001", "category": "metric", "label": "Rendement total", ...}   │
+│        ]                                                                             │
+│      },                                                                              │
+│      "warnings": []  // Vide si succès                                              │
+│    }                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ 6. FRONTEND (React) : SimulationResults.tsx                                         │
+│    Affichage des résultats :                                                        │
+│    • Explication narrative (texte généré par IA)                                    │
+│    • Métriques comparatives (avant/après)                                           │
+│    • Graphiques                                                                     │
+│    • Références aux sources de données                                              │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Interface alternative : Streamlit
+
+Streamlit (`ui/`) reste disponible comme interface historique pour tests rapides :
+
+```bash
+streamlit run app.py  # Port 8501
+```
+
+**Fonctionnalités Streamlit :**
+- `ui/simulation.py` : Ajout d'un seul actif (équivalent React + Bedrock)
+- `ui/portfolio_editor.py` : Modifications multiples (équivalent React sans Bedrock)
+
+#### Dépendances externes critiques
+
+| Service/Librairie | Rôle | Disponibilité requise |
+|---|---|---|
+| **AWS Bedrock** | Explication narrative IA | Optionnelle (mode dégradé si indisponible) |
+| **Yahoo Finance** | Données historiques prix | Pré-téléchargées (data/market/prices_daily.csv) |
+| **Banque du Canada** | Taux de change USD/CAD | Pré-téléchargées (data/market/fx_usdcad_daily.csv) |
+| **boto3 + botocore** | Client AWS Python | Requise si Bedrock activé |
+| **FastAPI** | Serveur API REST | Requise pour frontend React |
+| **React + Vite** | Frontend moderne | Requise pour interface web |
+| **Streamlit** | Interface alternative | Optionnelle (historique) |
+
+**Mode dégradé (sans AWS) :**
+```bash
+export BEDROCK_MODEL_ID=""  # Désactive Bedrock explicitement
+# OU : Ne pas configurer credentials AWS
+# → API retourne "status": "partial" avec métriques mais sans explication
+```
+
+Le parcours principal est l'application React (`frontend/`), qui communique avec FastAPI (`api/`) pour accéder aux calculs Python et optionnellement à AWS Bedrock pour les explications narratives.
 
 ---
 
@@ -468,11 +697,11 @@ Les captures d'écran et la vidéo officielle de démonstration restent à produ
 ```text
 DATATHON-POLYFINANCES/
 ├── alphaforge/
-│   ├── engine.py            Moteur de simulation            (Personne 1)
-│   └── profile_checks.py    Contrôles du profil et ESG      (Personne 4)
-├── app.py                   Interface Streamlit             (Personne 3)
-├── styles/style.css         Thèmes de l'interface           (Personne 3)
-├── scripts/                 Diagnostic AWS Bedrock          (Personne 2)
+│   ├── engine.py            Moteur de simulation            
+│   └── profile_checks.py    Contrôles du profil et ESG      
+├── app.py                   Interface Streamlit             
+├── styles/style.css         Thèmes de l'interface           
+├── scripts/                 Diagnostic AWS Bedrock          
 ├── run_comparison.py        Commande de simulation
 ├── data/
 │   ├── market/              Jeu de départ AlphaForge (prix, change, univers, sources)

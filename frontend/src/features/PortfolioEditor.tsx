@@ -4,6 +4,175 @@ import type { Asset, Bootstrap, CustomPortfolioResponse, PersonaId } from "../ty
 import { api } from "../lib/api";
 import { Button, Card } from "../components/ui";
 
+/**
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║              PORTFOLIO EDITOR - React Component (TypeScript)             ║
+ * ║         Éditeur de portefeuille avec modifications multiples              ║
+ * ║                   et analyse comparative (AVANT vs APRÈS)                 ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
+ *
+ * OVERVIEW :
+ * ----------
+ * Ce composant React permet à l'utilisateur de :
+ * 1. Sélectionner un profil d'investisseur (persona)
+ * 2. Modifier les poids de tous les actifs existants (sliders)
+ * 3. Ajouter de nouveaux actifs depuis l'univers disponible (multi-sélection)
+ * 4. Retirer des actifs (bouton Trash2, poids mis à 0)
+ * 5. Normaliser automatiquement les poids pour atteindre 100%
+ * 6. Soumettre au backend pour analyse comparative (POST /api/custom-portfolio)
+ * 7. Passer les résultats au parent via onResult() pour affichage
+ *
+ * ARCHITECTURE (React + TypeScript) :
+ * -----------------------------------
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ State Management (React useState)                                        │
+ * │ - selectedPersonaId : PersonaId (amira/mateo/robert)                    │
+ * │ - weights : Record<symbol, weight_pct>  (actifs existants)              │
+ * │ - selectedNewAssets : string[]  (symboles à ajouter)                    │
+ * │ - autoNormalize : boolean  (normalisation auto activée?)                │
+ * │ - analyzing : boolean  (appel API en cours?)                            │
+ * │ - error : string  (message d'erreur)                                    │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *                                 ↓
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ Computed Values (React useMemo)                                          │
+ * │ - persona : Persona actuel                                               │
+ * │ - initialPortfolio : Portfolio initial du persona                        │
+ * │ - assetsBySymbol : Map<symbol → Asset> pour lookup rapide               │
+ * │ - availableAssets : Actifs pas encore dans le portefeuille              │
+ * │ - totalWeight : Somme des poids (existants + nouveaux)                  │
+ * │ - finalWeights : Poids finaux (normalisés si autoNormalize=true)        │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *                                 ↓
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ User Interactions (React callbacks)                                      │
+ * │ - handlePersonaChange : Réinitialise weights, selectedNewAssets          │
+ * │ - handleWeightChange : Met à jour weights[symbol]                        │
+ * │ - handleRemoveAsset : Met weights[symbol] = 0 (retire de facto)         │
+ * │ - handleAddNewAsset : Ajoute symbol à selectedNewAssets                 │
+ * │ - handleAnalyze : POST au backend, appelle onResult()                   │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *                                 ↓
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ API Call (handleAnalyze)                                                 │
+ * │ POST /api/custom-portfolio                                               │
+ * │ Body : { persona_id, custom_weights }                                    │
+ * │ → Résultat passé au parent via onResult(response)                        │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *
+ * SOURCES DE DONNÉES :
+ * --------------------
+ * - Bootstrap data (prop) :
+ *   * personas : data/personas.json (chargé par parent)
+ *   * portfolios : data/portfolios.json
+ *   * assets : data/market/assets_universe.csv
+ * - Backend API : POST /api/custom-portfolio
+ *   → Appelle agent.service.analyze_custom_portfolio()
+ *
+ * HYPOTHÈSES CRITIQUES :
+ * ----------------------
+ * ⚠️ FRONTEND :
+ * - Bootstrap data est déjà chargé par le parent (pas de fetch ici)
+ * - Les poids sont stockés en pourcentages (0-100), pas en décimales (0-1)
+ * - Le backend valide les inputs (on fait une validation basique côté client)
+ * - Un seul portefeuille personnalisé édité à la fois (pas de multi-tabs)
+ *
+ * ⚠️ REACT :
+ * - State local persiste entre rerenders mais PAS entre remounts
+ * - useMemo optimise les calculs mais React peut les refaire (non garanti)
+ * - useEffect avec deps vides = run once au mount
+ * - useEffect avec deps = run quand deps changent
+ *
+ * ⚠️ BACKEND (délégué à analyze_custom_portfolio) :
+ * - Voir docstring de agent/service.py::analyze_custom_portfolio()
+ * - Buy-and-hold, historique, pas de coûts de transaction, etc.
+ *
+ * LIMITES :
+ * ---------
+ * - **State** : Pas de persistance (refresh page = perte des modifications)
+ * - **UX** : Pas de undo/redo
+ * - **Performance** : Re-render complet à chaque changement de slider
+ *   (optimisations possibles avec React.memo, useDeferredValue)
+ * - **Validation** : Validation basique côté client (vrai validation au backend)
+ * - **Accessibilité** : Sliders natifs, pas de labels ARIA custom
+ * - **Mobile** : Sliders nombreux = scroll long (UX à améliorer)
+ *
+ * VALIDATION DES ENTRÉES :
+ * ------------------------
+ * ✅ Total des poids = 100% (validation côté client + normalisation auto)
+ * ✅ Tous les symboles existent dans data.assets (garanti par UI)
+ * ✅ Poids >= 0 (sliders min=0)
+ * ✅ Backend fait validation supplémentaire (symboles dans market data, etc.)
+ *
+ * COMPORTEMENT :
+ * --------------
+ * 1. **Changement de persona** :
+ *    → useEffect réinitialise weights avec initialPortfolio
+ *    → selectedNewAssets vidé
+ *    → error vidé
+ *
+ * 2. **Retrait d'actif (bouton Trash2)** :
+ *    → weights[symbol] = 0
+ *    → L'actif reste dans weights (pas delete), mais poids 0
+ *    → Filtre finalWeights exclut poids === 0
+ *
+ * 3. **Ajout d'actif** :
+ *    → Ajoute symbol à selectedNewAssets avec poids initial 5%
+ *    → Slider apparaît dynamiquement
+ *
+ * 4. **Normalisation auto** :
+ *    → Si autoNormalize = true et totalWeight !== 100 :
+ *       → Multiplie tous les poids par (100 / totalWeight)
+ *    → Si autoNormalize = false :
+ *       → Bouton "Analyser" désactivé si totalWeight !== 100
+ *
+ * 5. **Analyse** :
+ *    → Désactive bouton (analyzing = true)
+ *    → POST /api/custom-portfolio avec { persona_id, custom_weights }
+ *    → Si succès : onResult(response) → parent affiche résultats
+ *    → Si erreur : setError(message) → affichage en rouge
+ *
+ * PERFORMANCE :
+ * -------------
+ * - Re-renders : Chaque changement de slider déclenche re-render complet
+ *   (optimisation possible : React.memo sur WeightSlider sub-component)
+ * - API call : 2-5 secondes (backend calcule simulation)
+ * - useMemo : Évite recalculs inutiles de persona, portfolio, etc.
+ * - useCallback : Évite recréation de fonctions à chaque render
+ *
+ * ACCESSIBILITÉ :
+ * ---------------
+ * - Sliders : <input type="range"> natif (keyboard accessible)
+ * - Boutons : Labels clairs, icônes lucide-react
+ * - Erreurs : Affichées avec AlertCircle icon et texte rouge
+ * - Focus : États focus gérés par Tailwind (ring-2)
+ *
+ * SÉCURITÉ :
+ * ----------
+ * - Pas d'injection SQL/XSS (backend valide, pas de HTML dangerouslySetInnerHTML)
+ * - Pas de secrets côté client (API key AWS gérée côté backend)
+ * - CORS configuré côté backend (autorise seulement localhost:5173)
+ *
+ * TESTS :
+ * -------
+ * - Backend testé : tests/test_custom_portfolio.py (40+ cas)
+ * - Frontend : Tests manuels (React Testing Library possible)
+ * - E2E : Playwright/Cypress possible (pas implémenté)
+ *
+ * @component
+ * @example
+ * ```tsx
+ * <PortfolioEditor
+ *   data={bootstrap}  // { personas, portfolios, assets }
+ *   onResult={(result) => {
+ *     if (result.status === "success") {
+ *       // Afficher résultats (CustomPortfolioResults component)
+ *     }
+ *   }}
+ * />
+ * ```
+ */
+
 interface PortfolioEditorProps {
   data: Bootstrap;
   onResult: (result: CustomPortfolioResponse) => void;

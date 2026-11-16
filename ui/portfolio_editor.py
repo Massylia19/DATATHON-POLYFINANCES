@@ -1,4 +1,208 @@
-"""Interface de modification avancée du portefeuille AlphaForge."""
+"""Interface de modification avancée du portefeuille AlphaForge.
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ÉDITEUR DE PORTEFEUILLE - STREAMLIT                       ║
+║                  Interface utilisateur pour modifications                     ║
+║                        multiples et analyse comparative                       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+OVERVIEW :
+----------
+Cette interface Streamlit permet à l'utilisateur de :
+1. Sélectionner un profil d'investisseur (persona)
+2. Modifier les poids de TOUS les actifs existants avec des sliders interactifs
+3. Ajouter de NOUVEAUX actifs depuis l'univers disponible (multi-sélection)
+4. Retirer des actifs (bouton "Retirer" ou mettre le poids à 0%)
+5. Normaliser automatiquement les poids pour atteindre 100%
+6. Lancer une simulation comparative (AVANT vs APRÈS) via analyze_custom_portfolio()
+7. Visualiser les résultats : métriques, graphiques, composition
+
+C'est l'interface complète pour tester différents scénarios de portefeuille de manière
+pédagogique et fictive (aucune transaction réelle).
+
+ARCHITECTURE (Interface Streamlit) :
+------------------------------------
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 1. Sélection Persona (radio buttons)                                       │
+│    → Charge portefeuille initial depuis portfolios.json                    │
+│    → Réinitialise les poids personnalisés                                  │
+└────────────────────────────────────────────────────────────────────────────┘
+                                  ↓
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 2. Modification Poids Existants (sliders 0-100%)                           │
+│    → Session state : st.session_state["custom_weights"]                    │
+│    → Boutons "Retirer" pour mettre poids à 0                               │
+└────────────────────────────────────────────────────────────────────────────┘
+                                  ↓
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 3. Ajout Nouveaux Actifs (multiselect + sliders)                           │
+│    → Liste actifs disponibles = univers - actifs_actuels (weight > 0)      │
+│    → Session state : st.session_state["new_assets"]                        │
+│    → Sliders 0.5-50% pour chaque nouvel actif                              │
+└────────────────────────────────────────────────────────────────────────────┘
+                                  ↓
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 4. Résumé & Normalisation                                                  │
+│    → Calcul total = sum(custom_weights) + sum(new_assets)                  │
+│    → Checkbox "Normaliser automatiquement" (défaut: activé)                │
+│    → Si normalisé : factor = 100 / total, apply à tous les poids           │
+└────────────────────────────────────────────────────────────────────────────┘
+                                  ↓
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 5. Analyse (bouton "Analyser ce portefeuille")                             │
+│    → Appel analyze_custom_portfolio(persona_id, final_portfolio)           │
+│    → Résultat stocké dans st.session_state["custom_analysis_result"]       │
+│    → Rerun pour afficher résultats                                         │
+└────────────────────────────────────────────────────────────────────────────┘
+                                  ↓
+┌────────────────────────────────────────────────────────────────────────────┐
+│ 6. Affichage Résultats (métriques + graphiques)                            │
+│    → Métriques : rendement, volatilité, drawdown (AVANT vs APRÈS)          │
+│    → Graphique ligne : évolution temporelle (base 100)                     │
+│    → Expander : détails pondérations (tableaux)                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+SOURCES DE DONNÉES :
+--------------------
+- Personas : data/personas.json (profils investisseurs)
+- Portefeuilles initiaux : data/portfolios.json (allocations par persona)
+- Univers d'actifs : data/market/assets_universe.csv (symboles, noms, classes)
+- Simulation : agent/service.py::analyze_custom_portfolio() (backend)
+
+HYPOTHÈSES CRITIQUES :
+----------------------
+⚠️ INTERFACE :
+- L'utilisateur comprend que c'est une simulation pédagogique (disclaimer en bas)
+- Les modifications ne sont PAS sauvegardées (session state volatile)
+- Un seul portefeuille personnalisé à la fois (pas d'historique)
+- Les calculs sont déclenchés manuellement (bouton "Analyser")
+
+⚠️ BACKEND (délégué à analyze_custom_portfolio) :
+- Buy-and-hold strict (pas de rééquilibrage)
+- Historique ≠ futur
+- Coûts de transaction exclus
+- Voir docstring de analyze_custom_portfolio() pour détails
+
+⚠️ STREAMLIT :
+- Session state persiste entre reruns dans la même session navigateur
+- Un changement de persona réinitialise les poids (comportement voulu)
+- Les reruns sont déclenchés par : changement de valeur widget, boutons
+
+LIMITES :
+---------
+- **UX** : Pas de historique des analyses précédentes (une seule à la fois)
+- **UX** : Pas de sauvegarde des portefeuilles personnalisés (session volatile)
+- **UX** : Pas de comparaison multi-scénarios (A vs B vs C)
+- **Performance** : Analyse peut prendre 2-5 secondes (calcul backend)
+- **Validation** : Pas de check avancé (diversification min, exposition max par classe)
+- **Ergonomie** : Sur mobile, sliders nombreux = scroll long
+- **Méthodologiques** : Toutes les limites de analyze_custom_portfolio()
+
+VALIDATION DES ENTRÉES :
+------------------------
+✅ Total des poids = 100% (avec tolérance 0.01% ou normalisation auto)
+✅ Tous les symboles sélectionnés existent dans l'univers
+✅ Persona sélectionné existe
+✅ Poids >= 0 (sliders limités)
+❌ Backend valide davantage (symboles dans market data, etc.)
+
+COMPORTEMENT :
+--------------
+1. **Changement de persona** :
+   → Réinitialise custom_weights et new_assets
+   → Efface les résultats d'analyse précédents
+
+2. **Bouton "Retirer"** :
+   → Met le poids de l'actif à 0 (l'actif reste dans custom_weights)
+   → L'actif avec poids 0 n'apparaît pas dans le portefeuille final
+   → Peut être ré-ajouté via "Ajouter de nouveaux actifs"
+
+3. **Normalisation** :
+   → Si cochée ET total ≠ 100% : applique factor = 100/total à tous les poids
+   → Si décochée : utilisateur doit ajuster manuellement à 100%
+   → Bouton "Analyser" désactivé si total ≠ 100% et normalisation décochée
+
+4. **Affichage résultats** :
+   → Résultats persistent jusqu'à : changement persona, "Nouvelle analyse", rerun
+   → Résultats liés au persona (si change persona, résultats effacés)
+
+5. **Bouton "Réinitialiser"** :
+   → Recharge les poids du portefeuille initial du persona
+   → Efface new_assets
+   → Efface résultats d'analyse
+
+ACCESSIBILITÉ :
+---------------
+- Labels clairs pour tous les sliders (nom actif + symbole + type)
+- Boutons avec libellés explicites ("Retirer", "Analyser", "Réinitialiser")
+- Métriques avec help tooltips (expliquent chaque indicateur)
+- Disclaimer visible en bas de page
+- Statut visuel : st.success() / st.warning() / st.error()
+
+SÉCURITÉ :
+----------
+- Aucune transaction réelle (simulation pure)
+- Pas de sauvegarde serveur (tout en session locale)
+- Pas d'entrée libre de texte (seulement sélections/sliders)
+- Backend valide les inputs (protect contre injections/valeurs aberrantes)
+
+PERFORMANCE :
+-------------
+- Interface réactive : reruns Streamlit ~50-200ms
+- Calcul analyse : 2-5 secondes (backend Python)
+- Pas de cache actuellement (chaque analyse recalcule tout)
+- Optimisation possible : @st.cache_data sur les chargements JSON/CSV
+
+MAINTENANCE :
+-------------
+- Dépendances : streamlit, agent.service, alphaforge.engine
+- Fichiers couplés : data/personas.json, data/portfolios.json, assets_universe.csv
+- Tests : Voir tests/test_custom_portfolio.py pour validation backend
+- UI tests : Manuels (Streamlit n'a pas de test framework robuste)
+
+EXEMPLES D'USAGE :
+------------------
+1. **Scénario : Tester ajout de Bitcoin** :
+   - Sélectionner persona "Amira"
+   - Aller dans "Ajouter de nouveaux actifs"
+   - Sélectionner "BTC-USD"
+   - Mettre slider à 10%
+   - Cocher "Normaliser automatiquement"
+   - Cliquer "Analyser ce portefeuille"
+   → Voir impact sur volatilité et rendement
+
+2. **Scénario : Retirer une action** :
+   - Sélectionner persona "Mateo"
+   - Trouver "Apple Inc. (AAPL)" dans la liste
+   - Cliquer bouton "Retirer" à côté
+   → Le poids passe à 0%, actif retiré du portefeuille final
+
+3. **Scénario : Rééquilibrer manuellement** :
+   - Décocher "Normaliser automatiquement"
+   - Ajuster tous les sliders pour atteindre exactement 100%
+   - Observer la métrique "Total des pondérations"
+   → Quand "Équilibré" apparaît en vert, peut analyser
+
+VOIR AUSSI :
+------------
+- agent/service.py::analyze_custom_portfolio() : Backend de simulation
+- ui/simulation.py : Interface Streamlit originale (ajout d'un seul actif)
+- frontend/src/features/PortfolioEditor.tsx : Version React (même fonctionnalité)
+- tests/test_custom_portfolio.py : Tests backend (40+ cas)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  AVERTISSEMENT LÉGAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Cette interface produit des SIMULATIONS PÉDAGOGIQUES basées sur des données
+historiques. Ce n'est PAS un conseil en placement, NI une recommandation d'achat
+ou de vente. Les performances passées ne garantissent pas les résultats futurs.
+
+L'utilisateur doit consulter un conseiller financier qualifié avant toute décision
+d'investissement réelle. Aucune vérification de l'adéquation au profil de risque,
+à la situation financière, aux objectifs, ou aux contraintes légales/fiscales de
+l'utilisateur n'est effectuée par cet outil.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
 
 from __future__ import annotations
 

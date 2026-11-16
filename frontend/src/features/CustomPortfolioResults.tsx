@@ -2,6 +2,139 @@ import { ArrowDown, ArrowUp, Check, TrendingDown, TrendingUp } from "lucide-reac
 import { useMemo } from "react";
 import type { Asset, CustomPortfolioAnalysis } from "../types";
 
+/**
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║           CUSTOM PORTFOLIO RESULTS - React Component (TypeScript)        ║
+ * ║          Affichage des résultats d'analyse comparative de portefeuille   ║
+ * ║                         (AVANT vs APRÈS modifications)                    ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
+ *
+ * OVERVIEW :
+ * ----------
+ * Ce composant React affiche les résultats d'une analyse comparative entre :
+ * - **AVANT** : Portefeuille initial du persona
+ * - **APRÈS** : Portefeuille personnalisé (avec modifications utilisateur)
+ *
+ * Il présente :
+ * 1. 3 cartes de métriques principales (Rendement, Volatilité, Baisse max)
+ * 2. Graphique d'évolution temporelle (line chart base 100)
+ * 3. Tableaux de composition détaillée (poids par actif)
+ * 4. Bouton "Nouvelle analyse" pour recommencer
+ *
+ * ARCHITECTURE (React + TypeScript) :
+ * -----------------------------------
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ Props Input (CustomPortfolioResultsProps)                                │
+ * │ - result : CustomPortfolioAnalysis  (données backend)                   │
+ * │ - assets : Asset[]  (pour lookup nom d'actif)                           │
+ * │ - onNewAnalysis : () => void  (callback pour recommencer)               │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *                                 ↓
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ Computed Values (useMemo)                                                │
+ * │ - assetsBySymbol : Map<symbol → Asset>  (lookup rapide)                 │
+ * │ - seriesData : {dates, before, after}  (pour graphique)                 │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *                                 ↓
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ Rendering (JSX)                                                          │
+ * │ 1. Status Banner (Success)                                               │
+ * │ 2. Metrics Section (3x MetricCard)                                       │
+ * │ 3. Chart Section (SVG line chart)                                        │
+ * │ 4. Composition Section (2x tables : before/after)                        │
+ * │ 5. Action Button (Nouvelle analyse)                                      │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *
+ * SOURCES DE DONNÉES :
+ * --------------------
+ * - result (prop) :
+ *   * Provient de POST /api/custom-portfolio (backend)
+ *   * Calculé par agent.service.analyze_custom_portfolio()
+ *   * Structure : { before, after, delta_after_minus_before, series, period }
+ * - assets (prop) :
+ *   * Liste des actifs avec métadonnées (nom, classe, secteur)
+ *   * Utilisé pour afficher noms lisibles au lieu des symboles
+ *
+ * HYPOTHÈSES CRITIQUES :
+ * ----------------------
+ * ⚠️ DONNÉES :
+ * - result.before et result.after ont la même structure (weights_by_asset_pct, metrics)
+ * - result.delta_after_minus_before contient les différences (after - before)
+ * - result.series contient dates, before, after (même longueur)
+ * - Tous les symboles dans result.before/after existent dans assets
+ *
+ * ⚠️ FORMATAGE :
+ * - Les métriques sont en décimales (0.15 = 15%)
+ * - formatRate() multiplie par 100 et ajoute "%"
+ * - Delta positif = vert (sauf si inverse=true)
+ *
+ * ⚠️ GRAPHIQUE :
+ * - Base 100 au début (normalisation déjà faite par backend)
+ * - Dates au format ISO "YYYY-MM-DD" (backend)
+ * - SVG simple (pas de librairie externe comme Recharts)
+ *
+ * LIMITES :
+ * ---------
+ * - **Graphique** : SVG basique, pas de hover tooltip, pas de zoom
+ *   (amélioration possible avec Recharts, Chart.js, D3)
+ * - **Interactivité** : Pas de filtrage par période, par actif
+ * - **Export** : Pas de bouton export CSV/PDF
+ * - **Comparaison** : Seulement 2 scénarios (avant/après), pas de multi-scénarios
+ * - **Performance** : Re-render complet si props changent (optimisation : React.memo)
+ *
+ * COMPORTEMENT :
+ * --------------
+ * 1. **Métriques** :
+ *    - Rendement : Delta positif = vert (bon)
+ *    - Volatilité : Delta positif = rouge (mauvais), inverse=true
+ *    - Baisse max : Delta positif = rouge (baisse plus grande), inverse=true
+ *
+ * 2. **Graphique** :
+ *    - Ligne bleue : AVANT (portefeuille initial)
+ *    - Ligne verte : APRÈS (portefeuille personnalisé)
+ *    - Base 100 au départ, évolution relative ensuite
+ *
+ * 3. **Tableaux** :
+ *    - AVANT : Affiche tous les actifs du portefeuille initial
+ *    - APRÈS : Affiche actifs du portefeuille personnalisé + delta vs AVANT
+ *    - Delta affiché : +X.XX% ou -X.XX% (variation du poids)
+ *
+ * 4. **Bouton "Nouvelle analyse"** :
+ *    - Appelle onNewAnalysis() → parent réinitialise state
+ *    - Retour à l'éditeur de portefeuille
+ *
+ * PERFORMANCE :
+ * -------------
+ * - useMemo : Évite recalcul de assetsBySymbol à chaque render
+ * - React.memo possible sur MetricCard (pas implémenté)
+ * - Graphique SVG : Performant jusqu'à ~500 points
+ *   (au-delà, considérer canvas ou WebGL)
+ *
+ * ACCESSIBILITÉ :
+ * ---------------
+ * - Cartes métriques : Labels clairs, icônes descriptives
+ * - Graphique : Pas de texte alt (amélioration : ajouter <title> SVG)
+ * - Tableaux : Headers explicites, structure sémantique
+ * - Couleurs : Suffisamment contrastées (WCAG AA)
+ * - Boutons : Labels clairs, focus visible
+ *
+ * TESTS :
+ * -------
+ * - Backend testé : tests/test_custom_portfolio.py (structure de réponse)
+ * - Frontend : Tests manuels
+ * - Snapshot testing possible (Jest + React Testing Library)
+ *
+ * @component
+ * @example
+ * ```tsx
+ * <CustomPortfolioResults
+ *   result={analysisResult}  // De POST /api/custom-portfolio
+ *   assets={bootstrap.assets}  // Pour lookup noms d'actifs
+ *   onNewAnalysis={() => setShowResults(false)}
+ * />
+ * ```
+ */
+
 interface CustomPortfolioResultsProps {
   result: CustomPortfolioAnalysis;
   assets: Asset[];
