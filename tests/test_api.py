@@ -20,9 +20,19 @@ class ApiTests(unittest.TestCase):
         response = self.client.get("/api/bootstrap")
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual([item["id"] for item in body["personas"]], ["amira", "mateo", "robert"])
+        self.assertEqual([item["id"] for item in body["personas"]], ["amira", "mateo", "robert", "alex"])
         self.assertIn("NVDA", [item["ticker"] for item in body["assets"]])
         self.assertNotIn("prices", body)
+
+    def test_bootstrap_flags_profile_contradictions(self):
+        body = self.client.get("/api/bootstrap").json()
+        contradictions = {item["id"]: [c["id"] for c in item["contradictions"]] for item in body["personas"]}
+        self.assertEqual(
+            sorted(contradictions["alex"]),
+            ["risk_objective_conflict", "speculation_preference_conflict"],
+        )
+        for persona_id in ("amira", "mateo", "robert"):
+            self.assertEqual(contradictions[persona_id], [])
 
     def test_invalid_boolean_and_extra_fields_are_rejected(self):
         response = self.client.post("/api/analyses", json={"persona_id": "amira", "symbol": "NVDA", "target_weight_pct": True})

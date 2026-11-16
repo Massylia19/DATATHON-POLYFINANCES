@@ -1,4 +1,4 @@
-import { AlertTriangle, Briefcase, Clock, Gauge, PenLine, PieChart, Play, Target } from "lucide-react";
+import { AlertTriangle, Briefcase, Clock, Flag, Gauge, PenLine, PieChart, Play, Target } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   Asset,
@@ -15,6 +15,7 @@ import {
   previewAllocation,
 } from "../../lib/presentation";
 import { Button, Card, InfoTip, Spinner } from "../../components/ui";
+import { ContradictionAlert } from "../../components/RedFlag";
 
 interface ScenarioPanelProps {
   personas: Persona[];
@@ -160,9 +161,11 @@ export function ScenarioPanel({
                 type="button"
                 aria-pressed={draft.persona_id === item.id}
                 onClick={() => onSelectPersona(item.id)}
+                className={item.contradictions?.length ? "has-red-flag" : undefined}
               >
                 <span className={`avatar avatar-${item.id}`} aria-hidden="true">{item.name.charAt(0)}</span>
                 {item.name}
+                {item.contradictions?.length ? <><Flag aria-hidden="true" className="pill-flag" /><span className="sr-only"> (profil contradictoire)</span></> : null}
               </button>
             ))}
           </div>
@@ -193,6 +196,8 @@ export function ScenarioPanel({
           </details>
         </div>
       </div>
+
+      <ContradictionAlert items={persona.contradictions ?? []} name={persona.name} />
 
       <form
         className="scenario-form"

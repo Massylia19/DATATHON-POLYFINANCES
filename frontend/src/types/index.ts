@@ -1,8 +1,9 @@
-export type PersonaId = "amira" | "mateo" | "robert";
+export type PersonaId = "amira" | "mateo" | "robert" | "alex";
 export type ResultStatus = "success" | "partial" | "error";
 export type CheckStatus = "consistent" | "tension" | "insufficient_information";
 
-export interface Persona { id: PersonaId; name: string; risk_level: string; horizon_years_min: number; horizon_years_max: number | null; objective: string; preferences: string[]; missing_information: string[]; }
+export interface Contradiction { id: string; title: string; message: string; }
+export interface Persona { id: PersonaId; name: string; risk_level: string; horizon_years_min: number; horizon_years_max: number | null; objective: string; preferences: string[]; missing_information: string[]; contradictions?: Contradiction[]; }
 export interface Position { symbol: string; weight_pct: number; }
 export interface Portfolio { persona_id: PersonaId; positions: Position[]; construction_note?: string; }
 export interface Scenario { persona_id: PersonaId; symbol: string; target_weight_pct: number; }

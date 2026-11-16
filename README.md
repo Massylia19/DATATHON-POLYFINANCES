@@ -6,13 +6,14 @@ AlphaForge AI est une application pédagogique de simulation. Elle compare un po
 
 > ⚠️ **Avertissement.** Il s'agit d'une comparaison historique hypothétique à but pédagogique. Ce n'est ni une prévision, ni une recommandation, ni un conseil en placement. Les personas et les portefeuilles sont fictifs.
 
-### Les trois parcours
+### Les parcours
 
 | Persona | Profil | Portefeuille fictif | Scénario testé |
 |---|---|---|---|
 | **Amira** | Risque élevé, 15 ans et plus, croissance à long terme | SPY 40 %, QQQ 30 %, SHOP.TO 15 %, BTC-USD 15 % | Ajouter **NVDA à 10 %** : concentration technologique |
 | **Mateo** | Risque modéré, 8 à 12 ans, préférences ESG | ESGV 40 %, XBB.TO 30 %, FTS.TO 15 %, GLD 15 % | Ajouter **XOM à 10 %** : compatibilité ESG |
 | **Robert** | Risque faible à modéré, 3 à 5 ans, préservation du capital | ZST.TO 40 %, XBB.TO 30 %, GLD 15 %, XIU.TO 15 % | Ajouter **TSLA à 5 %** : volatilité et préservation du capital |
+| **Alex** 🚩 *(démo)* | Risque élevé, 15 ans et plus, mais objectif de préservation du capital | SPY 40 %, QQQ 30 %, BTC-USD 20 %, GLD 10 % | Ajouter **NVDA à 10 %** : profil contradictoire, signalé par un drapeau rouge |
 
 L'interface permet aussi de tester n'importe quel actif du jeu de données, à n'importe quel poids.
 
@@ -84,7 +85,7 @@ python run_comparison.py --persona mateo --json
 
 | Option | Rôle |
 |---|---|
-| `--persona` | `amira`, `mateo` ou `robert` (défaut : `amira`) |
+| `--persona` | `amira`, `mateo`, `robert` ou `alex` (défaut : `amira`) |
 | `--symbol`, `--weight` | Actif à ajouter et poids cible en %, à donner ensemble. Sans eux, le scénario de `data/scenarios.json` est utilisé. |
 | `--output` | Enregistre le résultat complet en JSON |
 | `--json` | Affiche le JSON complet au lieu du résumé |
@@ -116,7 +117,7 @@ except EngineError as error:
     print(error.code, error.message)
 ```
 
-- `persona_id` : `"amira"`, `"mateo"` ou `"robert"`.
+- `persona_id` : `"amira"`, `"mateo"`, `"robert"` ou `"alex"`.
 - `symbol` : un ticker de `data/market/assets_universe.csv`. Les espaces sont retirés et la casse est ignorée (`" nvda "` devient `"NVDA"`).
 - `target_weight_pct` : un nombre strictement compris entre 0 et 100. `10` signifie 10 %.
 
@@ -225,6 +226,23 @@ Ce que les chiffres montrent, sans constituer un verdict :
 
 Les contrôles sont exécutés par `alphaforge/profile_checks.py`. Ils conservent les statuts `consistent`, `tension` et `insufficient_information` ainsi que les preuves et les informations manquantes propres à chaque contrôle. Une information absente n'est pas transformée en conclusion positive ou négative. Les limites et références ESG datées sont conservées dans le rapport détaillé.
 
+### Drapeau rouge : profils contradictoires
+
+Certains profils se contredisent eux-mêmes, avant même d'ajouter un actif. `alphaforge/contradiction_checks.py` repère ces contradictions directement dans les déclarations du profil et les ajoute aux contrôles (statut `tension`) :
+
+| Identifiant | Contradiction détectée | En langage simple |
+|---|---|---|
+| `speculation_preference_conflict` | Préférence pour les cryptos ou la spéculation **et** volonté de limiter la spéculation | « Aime les cryptos, mais veut éviter la spéculation. » |
+| `risk_objective_conflict` | Tolérance au risque élevée **et** objectif de préservation du capital | « Accepte beaucoup de risque, mais veut protéger son argent. » |
+
+Le persona de démonstration **Alex** déclenche les deux. Les autres personas n'en déclenchent aucune.
+
+- **API** : `/api/bootstrap` renvoie pour chaque persona une liste `contradictions` (`id`, `title`, `message`), vide si le profil est cohérent.
+- **Interface** : un badge rouge « Profil contradictoire » apparaît sur la carte du profil et dans le démarrage rapide, un drapeau dans le sélecteur de profil, et un encadré « Drapeau rouge : Alex se contredit » sur la page Simuler. Sur la page Cohérence, les contradictions sont comptées à part, surlignées en rouge et ouvertes par défaut.
+- **En ligne de commande** : `python run_comparison.py --persona alex` affiche les deux contradictions sous les résultats.
+
+Une contradiction n'empêche pas la simulation : elle signale qu'il faut clarifier les objectifs du profil avant d'interpréter les résultats.
+
 ---
 
 ## Agent IA et AWS
@@ -309,9 +327,9 @@ Ouvrir ensuite <http://localhost:5173>.
 | Page | À quoi elle sert |
 |---|---|
 | **Vue d'ensemble** | Présente le projet et la question posée |
-| **Profils fictifs** | Les cartes d'Amira, Mateo et Robert : objectif, horizon, préférences et portefeuille de départ |
+| **Profils fictifs** | Les cartes d'Amira, Mateo, Robert et Alex : objectif, horizon, préférences et portefeuille de départ, avec un drapeau rouge si le profil se contredit |
 | **Simuler un ajout** | Choisir l'actif et le poids, lancer l'analyse, voir les cartes avant/après, le graphique et les pondérations |
-| **Cohérence** | Les contrôles du profil (cohérent, tension ou information manquante) et leurs preuves. Disponible après une analyse. |
+| **Cohérence** | Les contrôles du profil (cohérent, tension ou information manquante) et leurs preuves, avec les contradictions du profil mises en évidence en rouge. Disponible après une analyse. |
 | **Mes scénarios** | Les scénarios enregistrés sur cet appareil |
 | **Sources et méthode** | D'où viennent les données et comment les chiffres sont calculés |
 
@@ -348,7 +366,7 @@ npm run build       # version de production
 - **La baisse maximale** est mesurée sur les dates retenues et peut omettre une baisse survenue entre deux observations.
 - **Composition des FNB inconnue** : l'exposition indirecte (par exemple à NVDA via QQQ) n'est pas mesurée.
 - **Aucune cote ESG** dans le jeu de départ : les constats ESG reposent sur des preuves datées et documentées.
-- **Informations inconnues** : la capacité à absorber une perte, les besoins de liquidités et les retraits prévus restent inconnus pour les trois personas. Rien n'est déduit de la profession, de l'âge ou de la situation familiale.
+- **Informations inconnues** : la capacité à absorber une perte, les besoins de liquidités et les retraits prévus restent inconnus pour tous les personas. Rien n'est déduit de la profession, de l'âge ou de la situation familiale.
 - **Limites de l'IA** : les explications et contre-analyses dépendent des données et des preuves disponibles. Une contradiction détectée ou une conclusion nuancée ne constitue pas une validation financière indépendante.
 
 ---
@@ -359,7 +377,8 @@ npm run build       # version de production
 DATATHON-POLYFINANCES/
 ├── alphaforge/
 │   ├── engine.py            Moteur de simulation            (Personne 1)
-│   └── profile_checks.py    Contrôles du profil et ESG      (Personne 4)
+│   ├── profile_checks.py    Contrôles du profil et ESG      (Personne 4)
+│   └── contradiction_checks.py  Drapeau rouge : contradictions du profil
 ├── api/                     API FastAPI
 ├── frontend/                Interface React / TypeScript
 ├── scripts/                 Diagnostic AWS Bedrock          (Personne 2)
